@@ -9,6 +9,8 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { basename, extname, join } from 'node:path';
+import type { PluginInput } from '@opencode-ai/plugin';
+import { modelSupportsImage } from '../utils/vision';
 
 // Debounce: only run cleanup every 10 minutes per directory
 const lastCleanupByDir = new Map<string, number>();
@@ -161,16 +163,26 @@ function writeUniqueFile(
   return null;
 }
 
-export function processImageAttachments(args: {
+export async function processImageAttachments(args: {
   messages: MessageWithParts[];
   workDir: string;
   disabledAgents: Set<string>;
+  client: PluginInput['client'];
+  orchestratorModel: string;
   log: (msg: string) => void;
-}): void {
-  const { messages, workDir, disabledAgents, log } = args;
+}): Promise<void> {
+  const { messages, workDir, disabledAgents, client, orchestratorModel, log } =
+    args;
 
   const observerEnabled = !disabledAgents.has('observer');
   if (!observerEnabled) return;
+
+  // If the orchestrator model supports image input, keep images as-is.
+  // The model will process them directly — no need to strip and delegate.
+  const supportsImage = await modelSupportsImage(client, orchestratorModel);
+  if (supportsImage) {
+    return;
+  }
 
   const messagesWithImages: Array<{
     msg: MessageWithParts;
@@ -179,6 +191,9 @@ export function processImageAttachments(args: {
 
   for (const msg of messages) {
     if (msg.info.role !== 'user') continue;
+    // Skip messages directed to the observer agent — the observe tool
+    // sends FileParts directly and image-hook must not strip them
+    if (msg.info.agent === 'observer') continue;
     const imageParts = msg.parts.filter(isImagePart);
     if (imageParts.length > 0) {
       messagesWithImages.push({ msg, imageParts });
@@ -253,7 +268,7 @@ export function processImageAttachments(args: {
       .concat([
         {
           type: 'text',
-          text: `[Image attachment detected.${pathsText} Your model may not support image input. Delegate to @observer with the file path(s) above so it can read the file with its read tool.]`,
+          text: `[Image attachment detected.${pathsText} Use the observe tool with these file path(s) to analyze the image(s).]`,
         },
       ]);
   }

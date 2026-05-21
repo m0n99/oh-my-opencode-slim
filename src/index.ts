@@ -4,11 +4,12 @@ import { buildOrchestratorPrompt } from './agents/orchestrator';
 import {
   type AgentOverrideConfig,
   deepMerge,
+  getAgentOverride,
   loadPluginConfig,
   type MultiplexerConfig,
 } from './config';
 import { parseList } from './config/agent-mcps';
-import { AGENT_ALIASES } from './config/constants';
+import { AGENT_ALIASES, DEFAULT_MODELS } from './config/constants';
 import {
   getActiveRuntimePreset,
   getPreviousRuntimePreset,
@@ -43,6 +44,7 @@ import {
   ast_grep_replace,
   ast_grep_search,
   createCouncilTool,
+  createObserveTool,
   createPresetManager,
   createWebfetchTool,
 } from './tools';
@@ -144,10 +146,14 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
   let presetManager: ReturnType<typeof createPresetManager>;
   let divoomManager: ReturnType<typeof createDivoomManager>;
   let councilTools: Record<string, unknown>;
+  let observeTools: Record<string, unknown>;
   let webfetch: ReturnType<typeof createWebfetchTool>;
   let rewriteDisplayNameMentions: ReturnType<
     typeof createDisplayNameMentionRewriter
   >;
+
+  // Resolved orchestrator model ID, set by the config() hook.
+  let orchestratorModelId: string | undefined;
 
   // Counters for post-init health check (set inside try, checked outside)
   let toolCount = 0;
@@ -251,6 +257,29 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
           new CouncilManager(ctx, config, depthTracker, multiplexerEnabled),
         )
       : {};
+
+    // Initialize observe tool (only when observer agent is enabled)
+    const observerDisabled = disabledAgents.has('observer');
+    if (!observerDisabled) {
+      const observerOverride = getAgentOverride(config, 'observer');
+      let observerModel: string;
+      if (Array.isArray(observerOverride?.model)) {
+        const first = observerOverride.model[0];
+        observerModel = typeof first === 'string' ? first : (first?.id ?? '');
+      } else {
+        observerModel =
+          (observerOverride?.model as string) ??
+          (DEFAULT_MODELS.observer as string);
+      }
+      observeTools = createObserveTool(ctx, {
+        depthTracker,
+        tmuxEnabled: multiplexerEnabled,
+        directory: ctx.directory,
+        observerModel,
+      });
+    } else {
+      observeTools = {};
+    }
 
     mcps = createBuiltinMcps(config.disabled_mcps, config.websearch);
     webfetch = createWebfetchTool(ctx);
@@ -396,6 +425,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
 
     tool: {
       ...councilTools,
+      ...observeTools,
       webfetch,
       ...todoContinuationHook.tool,
       ast_grep_search,
@@ -661,6 +691,17 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         tuiAgentModels[agentDef.name] = resolvedModel ?? 'default';
       }
       recordTuiAgentModels({ agentModels: tuiAgentModels });
+
+      // Capture the resolved orchestrator model for use in hooks.
+      const orchDef = agentDefs.find((a) => a.name === 'orchestrator');
+      const orchCfg = configAgent.orchestrator as
+        | Record<string, unknown>
+        | undefined;
+      orchestratorModelId =
+        (orchCfg?.model as string | undefined) ??
+        runtimeChains.orchestrator?.[0] ??
+        (orchDef?.config.model as string | undefined) ??
+        undefined;
 
       // Merge MCP configs
       const configMcp = opencodeConfig.mcp as
@@ -1086,10 +1127,12 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       // input, the API call fails before the LLM can respond. We replace
       // image bytes with a text nudge so the orchestrator delegates to
       // @observer instead.
-      processImageAttachments({
+      await processImageAttachments({
         messages: typedOutput.messages,
         workDir: ctx.directory,
         disabledAgents,
+        client: ctx.client,
+        orchestratorModel: orchestratorModelId ?? 'default',
         log,
       });
 

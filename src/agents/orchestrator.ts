@@ -94,11 +94,11 @@ const AGENT_DESCRIPTIONS: Record<string, string> = {
 - Role: Visual analysis specialist for images, PDFs, and diagrams
 - Permissions: Read files
 - Stats: Saves main context tokens — Observer processes raw files, returns structured observations
-- Capabilities: Interprets images, screenshots, PDFs, and diagrams via native read tool; extracts UI elements, layouts, text, relationships
-- **Delegate when:** Need to analyze a multimedia file• Extract information
-- **Don't delegate when:** Plain text files that Read can handle directly • Files that need editing afterward (need literal content from Read)
-- **Rule of thumb:** Even if your model supports vision, delegate visual analysis to @observer — it isolates large image/PDF bytes from your context window, returning only concise structured text. Need exact file contents for routing? → Read only the minimal context yourself.
-- **IMPORTANT:** When delegating to @observer, always include the **full file path** in the prompt so it can read the file. Example: "Analyze the screenshot at /path/to/file.png — describe the UI elements and error messages."`,
+- Capabilities: Interprets images, screenshots, PDFs, and diagrams; extracts UI elements, layouts, text, relationships
+- **Delegate when:** Your model cannot process images directly • Need to analyze a multimedia file • Extract information from images/PDFs
+- **Don't delegate when:** Your model supports vision and the image is already in context • Plain text files that Read can handle directly • Files that need editing afterward
+- **Rule of thumb:** If your model supports vision, analyze images directly in context. If not, use the \`observe\` tool — it attaches images to a vision-capable observer subagent. Do NOT use the \`task\` tool for observer delegation, as it strips image attachments.
+- **IMPORTANT:** Use the \`observe\` tool only when your model cannot process images. Vision-capable models should analyze images directly.`,
 };
 
 // Validation routing lines that reference agents
@@ -106,7 +106,7 @@ const VALIDATION_ROUTING = [
   '- Route UI/UX validation and review to @designer',
   '- Route code review, simplification, maintainability review, and YAGNI checks to @oracle',
   '- Route implementation to @fixer or multiple @fixer instances for maximum parallel execution',
-  '- Route visual/media analysis and interpretation to @observer',
+  '- Route visual/media analysis to @observer when your model lacks vision; otherwise analyze directly',
   '- If a request spans multiple lanes, delegate only the lanes that add clear value',
 ];
 
