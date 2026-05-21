@@ -146,6 +146,18 @@ describe('orchestrator agent', () => {
     );
   });
 
+  test('orchestrator is denied write/edit file tools', () => {
+    const agents = createAgents();
+    const orchestrator = agents.find((a) => a.name === 'orchestrator');
+    const perm = orchestrator?.config.permission as Record<string, string>;
+    expect(perm.write).toBe('deny');
+    expect(perm.edit).toBe('deny');
+    expect(perm.apply_patch).toBe('deny');
+    expect(perm.ast_grep_replace).toBe('deny');
+    expect(perm.patch).toBe('deny');
+    expect(perm.multi_edit).toBe('deny');
+  });
+
   test('orchestrator accepts overrides', () => {
     const config: PluginConfig = {
       agents: {

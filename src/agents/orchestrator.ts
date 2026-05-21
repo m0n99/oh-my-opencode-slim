@@ -179,7 +179,11 @@ Classify work into lanes: discovery, external knowledge, implementation, UI/UX, 
 - Provide context summaries, let specialists read what they need
 - Brief user on delegation goal before each call
 - Keep direct work limited to clarification, minimal routing context, todos, synthesis, and final checks
-- For trivial conversational answers or tiny mechanical edits, direct execution is allowed when scheduling overhead would clearly dominate
+- Orchestrator MUST NOT modify code/files directly — delegate to @fixer or @designer
+
+**No direct file edits:**
+- All code/file modifications must be delegated to write-capable specialists
+- User must explicitly grant a direct-edit override for any exception
 
 ## 4. Plan and Parallelize
 Build a short work graph before dispatching:

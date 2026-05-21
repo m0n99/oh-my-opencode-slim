@@ -180,10 +180,26 @@ function applyDefaultPermissions(
     ? (existing.council_session ?? 'allow')
     : 'deny';
 
+  // Orchestrator must not directly edit files — deny write/edit tools
+  const orchestratorDeniedTools:
+    | Record<string, 'deny'>
+    | Record<string, never> =
+    agent.name === 'orchestrator'
+      ? {
+          write: 'deny',
+          edit: 'deny',
+          apply_patch: 'deny',
+          ast_grep_replace: 'deny',
+          patch: 'deny',
+          multi_edit: 'deny',
+        }
+      : {};
+
   agent.config.permission = {
     ...existing,
     question: questionPerm,
     council_session: councilSessionPerm,
+    ...orchestratorDeniedTools,
     // Apply skill permissions as nested object under 'skill' key
     skill: {
       ...(typeof existing.skill === 'object' ? existing.skill : {}),
