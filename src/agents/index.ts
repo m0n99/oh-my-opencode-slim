@@ -38,6 +38,7 @@ type AgentFactory = (
 ) => AgentDefinition;
 
 const COUNCIL_TOOL_ALLOWED_AGENTS = new Set(['council']);
+const CANCEL_TASK_ALLOWED_AGENTS = new Set(['orchestrator']);
 const SAFE_AGENT_ALIAS_RE = /^[a-z][a-z0-9_-]*$/i;
 
 function normalizeDisplayName(displayName: string): string {
@@ -180,6 +181,9 @@ function applyDefaultPermissions(
   const councilSessionPerm = COUNCIL_TOOL_ALLOWED_AGENTS.has(agent.name)
     ? (existing.council_session ?? 'allow')
     : 'deny';
+  const cancelTaskPerm = CANCEL_TASK_ALLOWED_AGENTS.has(agent.name)
+    ? (existing.cancel_task ?? 'allow')
+    : 'deny';
 
   // Orchestrator must not directly edit files — deny write/edit tools
   const orchestratorDeniedTools:
@@ -201,6 +205,7 @@ function applyDefaultPermissions(
     question: questionPerm,
     council_session: councilSessionPerm,
     ...orchestratorDeniedTools,
+    cancel_task: cancelTaskPerm,
     // Apply skill permissions as nested object under 'skill' key
     skill: {
       ...(typeof existing.skill === 'object' ? existing.skill : {}),

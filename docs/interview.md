@@ -50,7 +50,6 @@ Promote an interview spec into the current goal:
 
 This uses the interview title and `Current spec` section as the pinned goal, so
 todos, delegation, and verification stay aligned with the clarified spec.
-
 ## What the browser UI gives you
 
 - focused question flow instead of open-ended chat

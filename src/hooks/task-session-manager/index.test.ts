@@ -7,10 +7,15 @@ function createHook(options?: {
   readContextMinLines?: number;
   readContextMaxFiles?: number;
   backgroundJobBoard?: BackgroundJobBoard;
+  sessionStatus?: unknown;
 }) {
   const hook = createTaskSessionManagerHook(
     {
-      client: { session: { status: mock(async () => ({ data: {} })) } },
+      client: {
+        session: {
+          status: mock(async () => ({ data: options?.sessionStatus ?? {} })),
+        },
+      },
       directory: '/tmp',
       worktree: '/tmp',
     } as never,
@@ -191,6 +196,109 @@ describe('task-session-manager hook', () => {
     expect(messages.messages[0].parts[0].text).toContain(
       'fix-1 / child-1 / fixer / running, timed out',
     );
+  });
+
+  test('classifies transient task_status errors for known running jobs', async () => {
+    const board = new BackgroundJobBoard();
+    const { hook } = createHook({ backgroundJobBoard: board });
+
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'oracle',
+      description: 'review plan',
+    });
+
+    const output = {
+      output: [
+        'task_id: child-1',
+        'state: error',
+        '',
+        '<task_error>',
+        'Task is not running in this process and has no final output.',
+        '</task_error>',
+      ].join('\n'),
+      metadata: { state: 'error' },
+    };
+
+    await hook['tool.execute.after'](
+      { tool: 'task_status', sessionID: 'parent-1', callID: 'call-2' },
+      output,
+    );
+
+    expect(output.output).toContain('state: error');
+    expect(output.metadata).toMatchObject({ state: 'error' });
+    expect(board.get('child-1')).toMatchObject({
+      state: 'running',
+      statusUncertain: true,
+      terminalUnreconciled: false,
+    });
+  });
+
+  test('does not terminalize transient task_status errors when live session is busy', async () => {
+    const board = new BackgroundJobBoard();
+    const { hook } = createHook({
+      backgroundJobBoard: board,
+      sessionStatus: { 'child-1': { type: 'busy' } },
+    });
+
+    const output = {
+      output: [
+        'task_id: child-1',
+        'state: error',
+        '',
+        '<task_error>',
+        'Task is not running in this process and has no final output.',
+        '</task_error>',
+      ].join('\n'),
+      metadata: { state: 'error' },
+    };
+
+    await hook['tool.execute.after'](
+      { tool: 'task_status', sessionID: 'parent-1', callID: 'call-2' },
+      output,
+    );
+
+    expect(output.output).toContain('state: error');
+    expect(output.metadata).toMatchObject({ state: 'error' });
+    expect(board.get('child-1')).toBeUndefined();
+  });
+
+  test('treats transient task_status errors as ambiguous for stale terminal records with live busy evidence', async () => {
+    const board = new BackgroundJobBoard();
+    const { hook } = createHook({
+      backgroundJobBoard: board,
+      sessionStatus: { 'child-1': { type: 'busy' } },
+    });
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'oracle',
+      description: 'review plan',
+    });
+    board.updateStatus({ taskID: 'child-1', state: 'completed' });
+
+    const output = {
+      output: [
+        'task_id: child-1',
+        'state: error',
+        '',
+        '<task_error>',
+        'Task is not running in this process and has no final output.',
+        '</task_error>',
+      ].join('\n'),
+      metadata: { state: 'error' },
+    };
+
+    await hook['tool.execute.after'](
+      { tool: 'task_status', sessionID: 'parent-1', callID: 'call-2' },
+      output,
+    );
+
+    expect(board.get('child-1')).toMatchObject({
+      state: 'completed',
+      terminalUnreconciled: true,
+    });
   });
 
   test('updates background job board from injected completion messages', async () => {
@@ -783,6 +891,98 @@ describe('task-session-manager hook', () => {
     });
   });
 
+  test('normalizes late injected failure for an explicitly cancelled task', async () => {
+    const board = new BackgroundJobBoard();
+    const { hook } = createHook({ backgroundJobBoard: board });
+
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'oracle',
+      description: 'cancelled review',
+    });
+    board.markCancelled('child-1', 'user requested');
+    board.markReconciled('child-1');
+
+    const messages = {
+      messages: [
+        {
+          info: { role: 'user', agent: 'orchestrator', sessionID: 'parent-1' },
+          parts: [
+            {
+              type: 'text',
+              synthetic: true,
+              text: [
+                'Background task failed: cancelled review',
+                'task_id: child-1',
+                'state: error',
+                '',
+                '<task_error>',
+                'No user message found in stream. This should never happen.',
+                '</task_error>',
+              ].join('\n'),
+            },
+          ],
+        },
+      ],
+    };
+
+    await hook['experimental.chat.messages.transform']({}, messages);
+
+    expect(messages.messages[0].parts[0].text).toContain('state: cancelled');
+    expect(messages.messages[0].parts[0].text).toContain(
+      'cancelled: user requested',
+    );
+    expect(messages.messages[0].parts[0].text).not.toContain(
+      'No user message found',
+    );
+    expect(board.get('child-1')).toMatchObject({
+      state: 'reconciled',
+      terminalState: 'cancelled',
+      terminalUnreconciled: false,
+    });
+  });
+
+  test('normalizes late task_status error output for an explicitly cancelled task', async () => {
+    const board = new BackgroundJobBoard();
+    const { hook } = createHook({ backgroundJobBoard: board });
+
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'oracle',
+      description: 'cancelled review',
+    });
+    board.markCancelled('child-1', 'user requested');
+    board.markReconciled('child-1');
+
+    const output = {
+      output: [
+        'task_id: child-1',
+        'state: error',
+        '',
+        '<task_error>',
+        'No user message found in stream. This should never happen.',
+        '</task_error>',
+      ].join('\n'),
+      metadata: { state: 'error' },
+    };
+
+    await hook['tool.execute.after'](
+      { tool: 'task_status', sessionID: 'parent-1', callID: 'call-2' },
+      output,
+    );
+
+    expect(output.output).toContain('state: cancelled');
+    expect(output.output).toContain('cancelled: user requested');
+    expect(output.output).not.toContain('No user message found');
+    expect(output.metadata).toMatchObject({ state: 'cancelled' });
+    expect(board.get('child-1')).toMatchObject({
+      state: 'reconciled',
+      terminalState: 'cancelled',
+    });
+  });
+
   test('marks terminal jobs reconciled after injected prompt reaches idle', async () => {
     const board = new BackgroundJobBoard();
     const { hook } = createHook({ backgroundJobBoard: board });
@@ -819,7 +1019,36 @@ describe('task-session-manager hook', () => {
 
     const nextMessages = createMessages('parent-1', 'continue again');
     await hook['experimental.chat.messages.transform']({}, nextMessages);
-    expect(nextMessages.messages[0].parts[0].text).toBe('continue again');
+    expect(nextMessages.messages[0].parts[0].text).toContain(
+      'Reusable Sessions',
+    );
+  });
+
+  test('reopens stale cancelled child job when child session becomes busy', async () => {
+    const board = new BackgroundJobBoard();
+    const { hook } = createHook({ backgroundJobBoard: board });
+
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'explorer',
+      description: 'read internals',
+    });
+    board.updateStatus({ taskID: 'child-1', state: 'cancelled' });
+    board.markReconciled('child-1');
+
+    await hook.event({
+      event: {
+        type: 'session.status',
+        properties: { sessionID: 'child-1', status: { type: 'busy' } },
+      },
+    });
+
+    expect(board.get('child-1')).toMatchObject({
+      state: 'running',
+      terminalUnreconciled: false,
+    });
+    expect(board.get('child-1')?.terminalState).toBeUndefined();
   });
 
   test('does not reconcile terminal jobs before they are injected into a prompt', async () => {
@@ -884,76 +1113,47 @@ describe('task-session-manager hook', () => {
     });
   });
 
-  test('does not expose running background jobs as resumable sessions', async () => {
-    const { hook } = createHook();
+  test('completed reconciled job appears reusable and resumes via task', async () => {
+    const board = new BackgroundJobBoard();
+    const { hook } = createHook({ backgroundJobBoard: board });
 
-    await hook['tool.execute.before'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-1',
-      },
-      {
-        args: {
-          subagent_type: 'explorer',
-          description: 'background config schema',
-        },
-      },
-    );
-    await hook['tool.execute.after'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-1',
-      },
-      {
-        output: [
-          'task_id: child-1 (for polling this task with task_status)',
-          'state: running',
-        ].join('\n'),
-      },
-    );
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'explorer',
+      description: 'map config schema',
+    });
+    board.updateStatus({
+      taskID: 'child-1',
+      state: 'completed',
+      resultSummary: 'schema mapped',
+    });
 
-    const next = {
-      args: {
-        subagent_type: 'explorer',
-        description: 'continue background work',
-        task_id: 'exp-1',
+    const messages = createMessages('parent-1', 'continue');
+    await hook['experimental.chat.messages.transform']({}, messages);
+    await hook.event({
+      event: {
+        type: 'session.status',
+        properties: { sessionID: 'parent-1', status: { type: 'idle' } },
       },
-    };
-    await hook['tool.execute.before'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-2',
-      },
-      next,
+    });
+
+    const nextMessages = createMessages('parent-1', 'reuse');
+    await hook['experimental.chat.messages.transform']({}, nextMessages);
+    expect(nextMessages.messages[0].parts[0].text).toContain(
+      '#### Reusable Sessions',
+    );
+    expect(nextMessages.messages[0].parts[0].text).toContain(
+      'exp-1 / child-1 / explorer / completed, reconciled',
+    );
+    expect(nextMessages.messages[0].parts[0].text).not.toContain(
+      ['<resumable', '_sessions>'].join(''),
+    );
+    expect(nextMessages.messages[0].parts[0].text).not.toContain(
+      ['### Resumable', 'Sessions'].join(' '),
     );
 
-    expect(next.args.task_id).toBeUndefined();
-  });
-
-  test('drops remembered alias when resumed session is relaunched in background', async () => {
-    const { hook } = createHook();
-
-    await hook['tool.execute.before'](
-      { tool: 'task', sessionID: 'parent-1', callID: 'call-1' },
-      {
-        args: {
-          subagent_type: 'explorer',
-          description: 'config schema',
-        },
-      },
-    );
-    await hook['tool.execute.after'](
-      { tool: 'task', sessionID: 'parent-1', callID: 'call-1' },
-      {
-        output:
-          'task_id: child-1 (for resuming to continue this task if needed)',
-      },
-    );
-
-    const resumed = {
+    const resume = {
       args: {
         subagent_type: 'explorer',
         description: 'continue config schema',
@@ -961,634 +1161,310 @@ describe('task-session-manager hook', () => {
       },
     };
     await hook['tool.execute.before'](
-      { tool: 'task', sessionID: 'parent-1', callID: 'call-2' },
-      resumed,
+      { tool: 'task', sessionID: 'parent-1', callID: 'resume-1' },
+      resume,
     );
-    expect(resumed.args.task_id).toBe('child-1');
+    expect(resume.args.task_id).toBe('child-1');
+  });
 
-    await hook['tool.execute.after'](
-      { tool: 'task', sessionID: 'parent-1', callID: 'call-2' },
-      {
-        output: [
-          'task_id: child-1 (for polling this task with task_status)',
-          'state: running',
-        ].join('\n'),
-      },
-    );
+  test('only reconciled completed jobs resolve as reusable task sessions', async () => {
+    const board = new BackgroundJobBoard();
+    const { hook } = createHook({ backgroundJobBoard: board });
 
-    const next = {
-      args: {
-        subagent_type: 'explorer',
-        description: 'try stale alias',
-        task_id: 'exp-1',
-      },
+    board.registerLaunch({
+      taskID: 'done-1',
+      parentSessionID: 'parent-1',
+      agent: 'oracle',
+      description: 'review plan',
+    });
+    board.updateStatus({ taskID: 'done-1', state: 'completed' });
+    board.registerLaunch({
+      taskID: 'err-1',
+      parentSessionID: 'parent-1',
+      agent: 'oracle',
+      description: 'bad review',
+    });
+    board.updateStatus({ taskID: 'err-1', state: 'error' });
+    board.markReconciled('err-1');
+
+    const unreconciled = {
+      args: { subagent_type: 'oracle', task_id: 'ora-1' },
     };
     await hook['tool.execute.before'](
+      { tool: 'task', sessionID: 'parent-1', callID: 'call-1' },
+      unreconciled,
+    );
+    expect(unreconciled.args.task_id).toBeUndefined();
+
+    board.markReconciled('done-1');
+
+    const failed = { args: { subagent_type: 'oracle', task_id: 'ora-2' } };
+    await hook['tool.execute.before'](
+      { tool: 'task', sessionID: 'parent-1', callID: 'call-2' },
+      failed,
+    );
+    expect(failed.args.task_id).toBeUndefined();
+
+    const completed = { args: { subagent_type: 'oracle', task_id: 'ora-1' } };
+    await hook['tool.execute.before'](
       { tool: 'task', sessionID: 'parent-1', callID: 'call-3' },
-      next,
+      completed,
+    );
+    expect(completed.args.task_id).toBe('done-1');
+
+    const messages = createMessages('parent-1', 'continue');
+    await hook['experimental.chat.messages.transform']({}, messages);
+    expect(messages.messages[0].parts[0].text).toContain(
+      'ora-1 / done-1 / oracle / completed, reconciled',
+    );
+    expect(messages.messages[0].parts[0].text).not.toContain('err-1');
+  });
+
+  test('running alias is polled through task_status but not resumed by task', async () => {
+    const board = new BackgroundJobBoard();
+    const { hook } = createHook({ backgroundJobBoard: board });
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'explorer',
+      description: 'map hooks',
+    });
+
+    const resume = { args: { subagent_type: 'explorer', task_id: 'exp-1' } };
+    await hook['tool.execute.before'](
+      { tool: 'task', sessionID: 'parent-1', callID: 'resume' },
+      resume,
+    );
+    expect(resume.args.task_id).toBeUndefined();
+
+    const poll = { args: { task_id: 'exp-1' } };
+    await hook['tool.execute.before'](
+      { tool: 'task_status', sessionID: 'parent-1', callID: 'poll' },
+      poll,
+    );
+    expect(poll.args.task_id).toBe('child-1');
+  });
+
+  test('task alias is dropped when subagent_type is missing', async () => {
+    const board = new BackgroundJobBoard();
+    const { hook } = createHook({ backgroundJobBoard: board });
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'explorer',
+      description: 'map hooks',
+    });
+
+    const resume = { args: { task_id: 'exp-1' } };
+    await hook['tool.execute.before'](
+      { tool: 'task', sessionID: 'parent-1', callID: 'resume' },
+      resume,
     );
 
-    expect(next.args.task_id).toBeUndefined();
+    expect(resume.args.task_id).toBeUndefined();
+  });
 
-    const messages = createMessages('parent-1', 'do something');
+  test('task alias is dropped when subagent_type is invalid', async () => {
+    const board = new BackgroundJobBoard();
+    const { hook } = createHook({ backgroundJobBoard: board });
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'explorer',
+      description: 'map hooks',
+    });
+
+    const resume = {
+      args: { subagent_type: 'not-an-agent', task_id: 'exp-1' },
+    };
+    await hook['tool.execute.before'](
+      { tool: 'task', sessionID: 'parent-1', callID: 'resume' },
+      resume,
+    );
+
+    expect(resume.args.task_id).toBeUndefined();
+  });
+
+  test('wrong parent or wrong agent alias does not resolve', async () => {
+    const board = new BackgroundJobBoard();
+    const { hook } = createHook({ backgroundJobBoard: board });
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'explorer',
+      description: 'map hooks',
+    });
+    board.updateStatus({ taskID: 'child-1', state: 'completed' });
+    board.markReconciled('child-1');
+
+    const wrongAgent = { args: { subagent_type: 'oracle', task_id: 'exp-1' } };
+    await hook['tool.execute.before'](
+      { tool: 'task', sessionID: 'parent-1', callID: 'agent' },
+      wrongAgent,
+    );
+    expect(wrongAgent.args.task_id).toBeUndefined();
+
+    const wrongParent = { args: { task_id: 'exp-1' } };
+    await hook['tool.execute.before'](
+      { tool: 'task_status', sessionID: 'parent-2', callID: 'parent' },
+      wrongParent,
+    );
+    expect(wrongParent.args.task_id).toBe('exp-1');
+  });
+
+  test('unknown raw task_status id remains unchanged', async () => {
+    const { hook } = createHook();
+    const poll = { args: { task_id: 'raw-unknown' } };
+    await hook['tool.execute.before'](
+      { tool: 'task_status', sessionID: 'parent-1', callID: 'poll' },
+      poll,
+    );
+    expect(poll.args.task_id).toBe('raw-unknown');
+  });
+
+  test('resuming reusable job relaunches running and removes reusable entry', async () => {
+    const board = new BackgroundJobBoard();
+    const { hook } = createHook({ backgroundJobBoard: board });
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'explorer',
+      description: 'map hooks',
+    });
+    board.updateStatus({ taskID: 'child-1', state: 'completed' });
+    board.markReconciled('child-1');
+
+    const resume = { args: { subagent_type: 'explorer', task_id: 'exp-1' } };
+    await hook['tool.execute.before'](
+      { tool: 'task', sessionID: 'parent-1', callID: 'resume' },
+      resume,
+    );
+    await hook['tool.execute.after'](
+      { tool: 'task', sessionID: 'parent-1', callID: 'resume' },
+      { output: ['task_id: child-1', 'state: running'].join('\n') },
+    );
+
+    const messages = createMessages('parent-1', 'continue');
     await hook['experimental.chat.messages.transform']({}, messages);
     expect(messages.messages[0].parts[0].text).toContain(
       'exp-1 / child-1 / explorer / running',
     );
-    expect(messages.messages[0].parts[0].text).not.toContain(
-      'explorer: exp-1 config schema',
+    expect(messages.messages[0].parts[0].text).toContain(
+      '#### Reusable Sessions\n- none',
     );
   });
 
-  test('stores task sessions and injects resumable-session block into user message', async () => {
+  test('bare task id output without state does not create reusable job', async () => {
     const { hook } = createHook();
-
     await hook['tool.execute.before'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-1',
-      },
-      {
-        args: {
-          subagent_type: 'explorer',
-          description: 'config schema',
-          prompt: 'inspect config schema',
-        },
-      },
+      { tool: 'task', sessionID: 'parent-1', callID: 'call-1' },
+      { args: { subagent_type: 'explorer', description: 'legacy output' } },
     );
-
     await hook['tool.execute.after'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-1',
-      },
-      {
-        output:
-          'task_id: child-1 (for resuming to continue this task if needed)',
-      },
+      { tool: 'task', sessionID: 'parent-1', callID: 'call-1' },
+      { output: 'task_id: child-1 (for resuming to continue this task)' },
     );
 
-    const messages = createMessages('parent-1', 'do something');
+    const messages = createMessages('parent-1', 'continue');
     await hook['experimental.chat.messages.transform']({}, messages);
+    expect(messages.messages[0].parts[0].text).toBe('continue');
+  });
 
-    const userMessage = messages.messages[0];
-    expect(userMessage.parts[0].text).toContain('<resumable_sessions>');
-    expect(userMessage.parts[0].text).toContain('### Resumable Sessions');
-    expect(userMessage.parts[0].text).toContain(
-      'explorer: exp-1 config schema',
+  test('reads before and after launch attach with unique-line counts and caps', async () => {
+    const { hook } = createHook({
+      readContextMinLines: 5,
+      readContextMaxFiles: 1,
+    });
+    await hook.event({
+      event: {
+        type: 'session.created',
+        properties: { info: { id: 'child-1', parentID: 'parent-1' } },
+      },
+    });
+    for (const [file, start, count] of [
+      ['small.ts', 1, 4],
+      ['large.ts', 1, 12],
+      ['large.ts', 7, 6],
+      ['medium.ts', 1, 5],
+    ] as const) {
+      await hook['tool.execute.after'](
+        { tool: 'read', sessionID: 'child-1', callID: `read-${file}-${start}` },
+        {
+          output: [
+            `<path>/tmp/src/${file}</path>`,
+            '<content>',
+            ...Array.from(
+              { length: count },
+              (_, index) => `${start + index}: line`,
+            ),
+            '</content>',
+          ].join('\n'),
+        },
+      );
+    }
+    await hook['tool.execute.before'](
+      { tool: 'task', sessionID: 'parent-1', callID: 'call-1' },
+      { args: { subagent_type: 'explorer', description: 'context caps' } },
     );
-    expect(userMessage.parts[0].text).toContain('</resumable_sessions>');
+    await hook['tool.execute.after'](
+      { tool: 'task', sessionID: 'parent-1', callID: 'call-1' },
+      { output: ['task_id: child-1', 'state: running'].join('\n') },
+    );
+    await hook['tool.execute.after'](
+      { tool: 'task_status', sessionID: 'parent-1', callID: 'status-1' },
+      { output: ['task_id: child-1', 'state: completed'].join('\n') },
+    );
+    const messages = createMessages('parent-1', 'continue');
+    await hook['experimental.chat.messages.transform']({}, messages);
+    await hook.event({
+      event: {
+        type: 'session.status',
+        properties: { sessionID: 'parent-1', status: { type: 'idle' } },
+      },
+    });
+    const next = createMessages('parent-1', 'reuse');
+    await hook['experimental.chat.messages.transform']({}, next);
+    const prompt = next.messages[0].parts[0].text;
+    expect(prompt).not.toContain('small.ts');
+    expect(prompt).toContain('src/large.ts (12 lines)');
+    expect(prompt).not.toContain('src/large.ts (18 lines)');
+    expect(prompt).toContain('(+1 more)');
+  });
+
+  test('reusable cap evicts only old reusable jobs, not active jobs', async () => {
+    const board = new BackgroundJobBoard({ maxReusablePerAgent: 2 });
+    for (const index of [1, 2, 3]) {
+      board.registerLaunch({
+        taskID: `done-${index}`,
+        parentSessionID: 'parent-1',
+        agent: 'explorer',
+        description: `done ${index}`,
+        now: index,
+      });
+      board.updateStatus({
+        taskID: `done-${index}`,
+        state: 'completed',
+        now: index,
+      });
+      board.markReconciled(`done-${index}`, index);
+    }
+    board.registerLaunch({
+      taskID: 'running-1',
+      parentSessionID: 'parent-1',
+      agent: 'explorer',
+      description: 'active',
+      now: 4,
+    });
+
+    expect(board.get('done-1')).toBeUndefined();
+    expect(board.get('done-2')).toBeDefined();
+    expect(board.get('done-3')).toBeDefined();
+    expect(board.get('running-1')).toBeDefined();
   });
 
   test('does not expose a system transform for resumable sessions', async () => {
     const { hook } = createHook();
     expect('experimental.chat.system.transform' in hook).toBe(false);
-  });
-
-  test('resolves remembered aliases to real task ids before execution', async () => {
-    const { hook } = createHook();
-
-    await hook['tool.execute.before'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-1',
-      },
-      {
-        args: {
-          subagent_type: 'explorer',
-          description: 'config schema',
-          prompt: 'inspect config schema',
-        },
-      },
-    );
-    await hook['tool.execute.after'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-1',
-      },
-      {
-        output:
-          'task_id: child-1 (for resuming to continue this task if needed)',
-      },
-    );
-
-    const next = {
-      args: {
-        subagent_type: 'explorer',
-        description: 'continue schema work',
-        task_id: 'exp-1',
-      },
-    };
-    await hook['tool.execute.before'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-2',
-      },
-      next,
-    );
-
-    expect(next.args.task_id).toBe('child-1');
-  });
-
-  test('tracks files read by child sessions in resumable message context', async () => {
-    const { hook } = createHook();
-
-    await hook.event({
-      event: {
-        type: 'session.created',
-        properties: { info: { id: 'child-1', parentID: 'parent-1' } },
-      },
-    });
-
-    await hook['tool.execute.after'](
-      {
-        tool: 'read',
-        sessionID: 'child-1',
-        callID: 'read-1',
-      },
-      {
-        output: [
-          '<path>/tmp/src/index.ts</path>',
-          '<type>file</type>',
-          '<content>',
-          ...Array.from({ length: 12 }, (_, index) => `${index + 1}: line`),
-          '</content>',
-        ].join('\n'),
-        metadata: {
-          loaded: ['/tmp/AGENTS.md'],
-        },
-      },
-    );
-
-    await hook['tool.execute.before'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-1',
-      },
-      {
-        args: {
-          subagent_type: 'explorer',
-          description: 'session files',
-        },
-      },
-    );
-    await hook['tool.execute.after'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-1',
-      },
-      {
-        output:
-          'task_id: child-1 (for resuming to continue this task if needed)',
-      },
-    );
-
-    const messages = createMessages('parent-1', 'do something');
-    await hook['experimental.chat.messages.transform']({}, messages);
-
-    const userMessage = messages.messages[0];
-    expect(userMessage.parts[0].text).toContain('exp-1 session files');
-    expect(userMessage.parts[0].text).toContain(
-      'Context read by exp-1: src/index.ts (12 lines)',
-    );
-  });
-
-  test('accumulates multiple reads and hides tiny read context', async () => {
-    const { hook } = createHook();
-
-    await hook.event({
-      event: {
-        type: 'session.created',
-        properties: { info: { id: 'child-1', parentID: 'parent-1' } },
-      },
-    });
-
-    await hook['tool.execute.after'](
-      { tool: 'read', sessionID: 'child-1', callID: 'read-1' },
-      {
-        output: [
-          '<path>/tmp/src/small.ts</path>',
-          '<content>',
-          ...Array.from({ length: 4 }, (_, index) => `${index + 1}: line`),
-          '</content>',
-        ].join('\n'),
-      },
-    );
-    await hook['tool.execute.after'](
-      { tool: 'read', sessionID: 'child-1', callID: 'read-2' },
-      {
-        output: [
-          '<path>/tmp/src/large.ts</path>',
-          '<content>',
-          ...Array.from({ length: 7 }, (_, index) => `${index + 1}: line`),
-          '</content>',
-        ].join('\n'),
-      },
-    );
-    await hook['tool.execute.after'](
-      { tool: 'read', sessionID: 'child-1', callID: 'read-3' },
-      {
-        output: [
-          '<path>/tmp/src/large.ts</path>',
-          '<content>',
-          ...Array.from({ length: 5 }, (_, index) => `${index + 8}: line`),
-          '</content>',
-        ].join('\n'),
-      },
-    );
-
-    await hook['tool.execute.before'](
-      { tool: 'task', sessionID: 'parent-1', callID: 'call-1' },
-      { args: { subagent_type: 'explorer', description: 'line counts' } },
-    );
-    await hook['tool.execute.after'](
-      { tool: 'task', sessionID: 'parent-1', callID: 'call-1' },
-      {
-        output:
-          'task_id: child-1 (for resuming to continue this task if needed)',
-      },
-    );
-
-    const messages = createMessages('parent-1', 'do something');
-    await hook['experimental.chat.messages.transform']({}, messages);
-
-    const prompt = messages.messages[0].parts[0].text;
-    expect(prompt).not.toContain('small.ts');
-    expect(prompt).toContain('src/large.ts (12 lines)');
-  });
-
-  test('counts overlapping repeated reads once per unique line', async () => {
-    const { hook } = createHook();
-
-    await hook.event({
-      event: {
-        type: 'session.created',
-        properties: { info: { id: 'child-1', parentID: 'parent-1' } },
-      },
-    });
-    for (const call of ['read-1', 'read-2']) {
-      await hook['tool.execute.after'](
-        { tool: 'read', sessionID: 'child-1', callID: call },
-        {
-          output: [
-            '<path>/tmp/src/repeat.ts</path>',
-            '<content>',
-            ...Array.from({ length: 12 }, (_, index) => `${index + 1}: line`),
-            '</content>',
-          ].join('\n'),
-        },
-      );
-    }
-
-    await hook['tool.execute.before'](
-      { tool: 'task', sessionID: 'parent-1', callID: 'call-1' },
-      { args: { subagent_type: 'explorer', description: 'repeat reads' } },
-    );
-    await hook['tool.execute.after'](
-      { tool: 'task', sessionID: 'parent-1', callID: 'call-1' },
-      {
-        output:
-          'task_id: child-1 (for resuming to continue this task if needed)',
-      },
-    );
-
-    const messages = createMessages('parent-1', 'do something');
-    await hook['experimental.chat.messages.transform']({}, messages);
-
-    const prompt = messages.messages[0].parts[0].text;
-    expect(prompt).toContain('src/repeat.ts (12 lines)');
-    expect(prompt).not.toContain('src/repeat.ts (24 lines)');
-  });
-
-  test('uses configured read context thresholds', async () => {
-    const { hook } = createHook({
-      readContextMinLines: 5,
-      readContextMaxFiles: 1,
-    });
-
-    await hook.event({
-      event: {
-        type: 'session.created',
-        properties: { info: { id: 'child-1', parentID: 'parent-1' } },
-      },
-    });
-    for (const [file, lines] of [
-      ['small.ts', 4],
-      ['medium.ts', 5],
-      ['large.ts', 12],
-    ] as const) {
-      await hook['tool.execute.after'](
-        { tool: 'read', sessionID: 'child-1', callID: `read-${file}` },
-        {
-          output: [
-            `<path>/tmp/src/${file}</path>`,
-            '<content>',
-            ...Array.from({ length: lines }, (_, line) => `${line + 1}: line`),
-            '</content>',
-          ].join('\n'),
-        },
-      );
-    }
-
-    await hook['tool.execute.before'](
-      { tool: 'task', sessionID: 'parent-1', callID: 'call-1' },
-      { args: { subagent_type: 'explorer', description: 'configured caps' } },
-    );
-    await hook['tool.execute.after'](
-      { tool: 'task', sessionID: 'parent-1', callID: 'call-1' },
-      {
-        output:
-          'task_id: child-1 (for resuming to continue this task if needed)',
-      },
-    );
-
-    const messages = createMessages('parent-1', 'do something');
-    await hook['experimental.chat.messages.transform']({}, messages);
-
-    const prompt = messages.messages[0].parts[0].text;
-    expect(prompt).not.toContain('small.ts');
-    expect(prompt).toContain('Context read by exp-1:');
-    expect(prompt).toContain('(+1 more)');
-  });
-
-  test('ignores reads from unmanaged child sessions', async () => {
-    const { hook } = createHook({
-      shouldManageSession: (sessionID) => sessionID === 'parent-1',
-    });
-
-    await hook.event({
-      event: {
-        type: 'session.created',
-        properties: { info: { id: 'child-1', parentID: 'other-parent' } },
-      },
-    });
-    await hook['tool.execute.after'](
-      { tool: 'read', sessionID: 'child-1', callID: 'read-1' },
-      {
-        output: [
-          '<path>/tmp/src/index.ts</path>',
-          '<content>',
-          ...Array.from({ length: 12 }, (_, index) => `${index + 1}: line`),
-          '</content>',
-        ].join('\n'),
-      },
-    );
-
-    await hook['tool.execute.before'](
-      { tool: 'task', sessionID: 'parent-1', callID: 'call-1' },
-      { args: { subagent_type: 'explorer', description: 'unmanaged read' } },
-    );
-    await hook['tool.execute.after'](
-      { tool: 'task', sessionID: 'parent-1', callID: 'call-1' },
-      {
-        output:
-          'task_id: child-1 (for resuming to continue this task if needed)',
-      },
-    );
-
-    const messages = createMessages('parent-1', 'do something');
-    await hook['experimental.chat.messages.transform']({}, messages);
-
-    const prompt = messages.messages[0].parts[0].text;
-    expect(prompt).toContain('exp-1 unmanaged read');
-    expect(prompt).not.toContain('Context read by exp-1');
-  });
-
-  test('prunes read context when remembered sessions are evicted', async () => {
-    const { hook } = createHook();
-
-    for (const index of [1, 2, 3]) {
-      await hook.event({
-        event: {
-          type: 'session.created',
-          properties: {
-            info: { id: `child-${index}`, parentID: 'parent-1' },
-          },
-        },
-      });
-      await hook['tool.execute.after'](
-        { tool: 'read', sessionID: `child-${index}`, callID: `read-${index}` },
-        {
-          output: [
-            `<path>/tmp/src/file-${index}.ts</path>`,
-            '<content>',
-            ...Array.from({ length: 12 }, (_, line) => `${line + 1}: line`),
-            '</content>',
-          ].join('\n'),
-        },
-      );
-      await hook['tool.execute.before'](
-        { tool: 'task', sessionID: 'parent-1', callID: `call-${index}` },
-        { args: { subagent_type: 'explorer', description: `thread ${index}` } },
-      );
-      await hook['tool.execute.after'](
-        { tool: 'task', sessionID: 'parent-1', callID: `call-${index}` },
-        {
-          output: `task_id: child-${index} (for resuming to continue this task if needed)`,
-        },
-      );
-    }
-
-    const messages = createMessages('parent-1', 'do something');
-    await hook['experimental.chat.messages.transform']({}, messages);
-
-    const prompt = messages.messages[0].parts[0].text;
-    expect(prompt).not.toContain('exp-1 thread 1');
-    expect(prompt).not.toContain('file-1.ts');
-    expect(prompt).toContain('exp-2 thread 2');
-    expect(prompt).toContain('file-2.ts (12 lines)');
-    expect(prompt).toContain('exp-3 thread 3');
-    expect(prompt).toContain('file-3.ts (12 lines)');
-  });
-
-  test('drops stale remembered sessions and falls back to fresh', async () => {
-    const { hook } = createHook();
-
-    await hook['tool.execute.before'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-1',
-      },
-      {
-        args: {
-          subagent_type: 'explorer',
-          description: 'config schema',
-        },
-      },
-    );
-    await hook['tool.execute.after'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-1',
-      },
-      {
-        output:
-          'task_id: child-1 (for resuming to continue this task if needed)',
-      },
-    );
-
-    const next = {
-      args: {
-        subagent_type: 'explorer',
-        description: 'continue schema work',
-        task_id: 'exp-1',
-      },
-    };
-    await hook['tool.execute.before'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-2',
-      },
-      next,
-    );
-
-    expect(next.args.task_id).toBe('child-1');
-
-    await hook['tool.execute.after'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-2',
-      },
-      {
-        output: '[ERROR] Session not found',
-      },
-    );
-
-    const messages = createMessages('parent-1', 'do something');
-    await hook['experimental.chat.messages.transform']({}, messages);
-    expect(messages.messages[0].parts[0].text).not.toContain('exp-1');
-  });
-
-  test('drops resumed predecessor when success returns a new task id', async () => {
-    const { hook } = createHook();
-
-    await hook['tool.execute.before'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-1',
-      },
-      {
-        args: {
-          subagent_type: 'explorer',
-          description: 'config schema',
-        },
-      },
-    );
-    await hook['tool.execute.after'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-1',
-      },
-      {
-        output:
-          'task_id: child-1 (for resuming to continue this task if needed)',
-      },
-    );
-
-    await hook['tool.execute.before'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-2',
-      },
-      {
-        args: {
-          subagent_type: 'explorer',
-          description: 'continue schema work',
-          task_id: 'exp-1',
-        },
-      },
-    );
-    await hook['tool.execute.after'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-2',
-      },
-      {
-        output:
-          'task_id: child-2 (for resuming to continue this task if needed)',
-      },
-    );
-
-    const messages = createMessages('parent-1', 'do something');
-    await hook['experimental.chat.messages.transform']({}, messages);
-
-    const prompt = messages.messages[0].parts[0].text;
-    expect(prompt).toContain('continue schema work');
-    expect(prompt).not.toContain('config schema');
-  });
-
-  test('does not drop remembered session on non-runtime session text', async () => {
-    const { hook } = createHook();
-
-    await hook['tool.execute.before'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-1',
-      },
-      {
-        args: {
-          subagent_type: 'explorer',
-          description: 'config schema',
-        },
-      },
-    );
-    await hook['tool.execute.after'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-1',
-      },
-      {
-        output:
-          'task_id: child-1 (for resuming to continue this task if needed)',
-      },
-    );
-
-    await hook['tool.execute.before'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-2',
-      },
-      {
-        args: {
-          subagent_type: 'explorer',
-          description: 'continue schema work',
-          task_id: 'exp-1',
-        },
-      },
-    );
-    await hook['tool.execute.after'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-2',
-      },
-      {
-        output: 'Found no session cookies in fixtures, continuing analysis.',
-      },
-    );
-
-    const messages = createMessages('parent-1', 'do something');
-    await hook['experimental.chat.messages.transform']({}, messages);
-
-    expect(messages.messages[0].parts[0].text).toContain('exp-1 config schema');
   });
 
   test('ignores sessions that are not orchestrator-managed', async () => {
@@ -1626,7 +1502,7 @@ describe('task-session-manager hook', () => {
     expect(messages.messages[0].parts[0].text).toBe('do something');
   });
 
-  test('cleans up remembered sessions when parent or child is deleted', async () => {
+  test('cleans up background jobs when parent or child is deleted', async () => {
     const { hook } = createHook();
 
     await hook['tool.execute.before'](
@@ -1710,89 +1586,28 @@ describe('task-session-manager hook', () => {
     expect(messages.messages[0].parts[0].text).toBe('do something');
   });
 
-  test('deduplicates pending call order when a resume call is recorded twice', async () => {
-    const { hook } = createHook();
-
+  test('parent deletion clears jobs and pending calls', async () => {
+    const board = new BackgroundJobBoard();
+    const { hook } = createHook({ backgroundJobBoard: board });
     await hook['tool.execute.before'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-1',
-      },
-      {
-        args: {
-          subagent_type: 'explorer',
-          description: 'config schema',
-        },
-      },
+      { tool: 'task', sessionID: 'parent-1', callID: 'call-1' },
+      { args: { subagent_type: 'oracle', description: 'architecture review' } },
     );
+    board.registerLaunch({
+      taskID: 'child-1',
+      parentSessionID: 'parent-1',
+      agent: 'oracle',
+      description: 'architecture review',
+    });
+
+    await hook.event({
+      event: { type: 'session.deleted', properties: { sessionID: 'parent-1' } },
+    });
     await hook['tool.execute.after'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-1',
-      },
-      {
-        output:
-          'task_id: child-1 (for resuming to continue this task if needed)',
-      },
+      { tool: 'task', sessionID: 'parent-1', callID: 'call-1' },
+      { output: ['task_id: child-2', 'state: running'].join('\n') },
     );
 
-    await hook['tool.execute.before'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-2',
-      },
-      {
-        args: {
-          subagent_type: 'explorer',
-          description: 'continue schema work',
-          task_id: 'exp-1',
-        },
-      },
-    );
-    await hook['tool.execute.after'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-2',
-      },
-      {
-        output: '[ERROR] Session not found',
-      },
-    );
-
-    await hook['tool.execute.before'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-3',
-      },
-      {
-        args: {
-          subagent_type: 'oracle',
-          description: 'architecture review',
-        },
-      },
-    );
-    await hook['tool.execute.after'](
-      {
-        tool: 'task',
-        sessionID: 'parent-1',
-        callID: 'call-3',
-      },
-      {
-        output:
-          'task_id: child-3 (for resuming to continue this task if needed)',
-      },
-    );
-
-    const messages = createMessages('parent-1', 'do something');
-    await hook['experimental.chat.messages.transform']({}, messages);
-
-    expect(messages.messages[0].parts[0].text).toContain(
-      'oracle: ora-1 architecture review',
-    );
+    expect(board.list('parent-1')).toHaveLength(0);
   });
 });

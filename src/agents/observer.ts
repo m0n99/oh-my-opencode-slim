@@ -1,3 +1,4 @@
+import { READONLY_FILE_OPERATIONS_RULES } from '../config';
 import type { AgentDefinition } from './orchestrator';
 
 const OBSERVER_PROMPT = `You are Observer — a visual analysis specialist.
@@ -18,6 +19,8 @@ const OBSERVER_PROMPT = `You are Observer — a visual analysis specialist.
 - Save context tokens — the Orchestrator never processes the raw file
 - Match the language of the request
 - If info not found, state clearly what's missing
+
+${READONLY_FILE_OPERATIONS_RULES}
 `;
 
 export function createObserverAgent(

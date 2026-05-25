@@ -1,3 +1,4 @@
+import { WRITABLE_FILE_OPERATIONS_RULES } from '../config';
 import type { AgentDefinition } from './orchestrator';
 
 const FIXER_PROMPT = `You are Fixer - a fast, focused implementation specialist.
@@ -12,6 +13,8 @@ const FIXER_PROMPT = `You are Fixer - a fast, focused implementation specialist.
 - Write or update tests when requested, especially for bounded tasks involving test files, fixtures, mocks, or test helpers
 - Run relevant validation when requested or clearly applicable (otherwise note as skipped with reason)
 - Report completion with summary of changes
+
+${WRITABLE_FILE_OPERATIONS_RULES}
 
 **Constraints**:
 - NO external research (no websearch, context7, grep_app)

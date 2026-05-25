@@ -443,6 +443,51 @@
       "contributions": [
         "code"
       ]
+    },
+    {
+      "login": "zackslash",
+      "name": "Luke Hines",
+      "avatar_url": "https://avatars.githubusercontent.com/u/2040617?v=4",
+      "profile": "https://github.com/zackslash",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "andrewylies",
+      "name": "m.seomoon",
+      "avatar_url": "https://avatars.githubusercontent.com/u/103019336?v=4",
+      "profile": "https://github.com/andrewylies",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "yolo2h",
+      "name": "Yolo",
+      "avatar_url": "https://avatars.githubusercontent.com/u/10754850?v=4",
+      "profile": "https://github.com/yolo2h",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "xinxingi",
+      "name": "XinXing",
+      "avatar_url": "https://avatars.githubusercontent.com/u/49302071?v=4",
+      "profile": "https://github.com/xinxingi",
+      "contributions": [
+        "code"
+      ]
+    },
+    {
+      "login": "eltociear",
+      "name": "Ikko Eltociear Ashimine",
+      "avatar_url": "https://avatars.githubusercontent.com/u/22633385?v=4",
+      "profile": "https://github.com/eltociear",
+      "contributions": [
+        "code"
+      ]
     }
   ],
   "commitConvention": "angular"

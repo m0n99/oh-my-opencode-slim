@@ -43,6 +43,7 @@ import {
 import {
   ast_grep_replace,
   ast_grep_search,
+  createCancelTaskTool,
   createCouncilTool,
   createObserveTool,
   createPresetManager,
@@ -147,6 +148,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
   let divoomManager: ReturnType<typeof createDivoomManager>;
   let councilTools: Record<string, unknown>;
   let observeTools: Record<string, unknown>;
+  let cancelTaskTools: Record<string, unknown>;
   let webfetch: ReturnType<typeof createWebfetchTool>;
   let rewriteDisplayNameMentions: ReturnType<
     typeof createDisplayNameMentionRewriter
@@ -283,12 +285,18 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
 
     mcps = createBuiltinMcps(config.disabled_mcps, config.websearch);
     webfetch = createWebfetchTool(ctx);
+    backgroundJobBoard = new BackgroundJobBoard({
+      maxReusablePerAgent: config.backgroundJobs?.maxSessionsPerAgent ?? 2,
+      readContextMinLines: config.backgroundJobs?.readContextMinLines ?? 10,
+      readContextMaxFiles: config.backgroundJobs?.readContextMaxFiles ?? 8,
+    });
 
     // Initialize MultiplexerSessionManager to handle OpenCode's built-in
     // Task tool sessions
     multiplexerSessionManager = new MultiplexerSessionManager(
       ctx,
       multiplexerConfig,
+      backgroundJobBoard,
     );
 
     // Initialize auto-update checker hook
@@ -344,9 +352,9 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       getAgentName: (sessionID) => sessionAgentMap.get(sessionID),
     });
     taskSessionManagerHook = createTaskSessionManagerHook(ctx, {
-      maxSessionsPerAgent: config.sessionManager?.maxSessionsPerAgent ?? 2,
-      readContextMinLines: config.sessionManager?.readContextMinLines ?? 10,
-      readContextMaxFiles: config.sessionManager?.readContextMaxFiles ?? 8,
+      maxSessionsPerAgent: config.backgroundJobs?.maxSessionsPerAgent ?? 2,
+      readContextMinLines: config.backgroundJobs?.readContextMinLines ?? 10,
+      readContextMaxFiles: config.backgroundJobs?.readContextMaxFiles ?? 8,
       backgroundJobBoard,
       shouldManageSession: (sessionID) =>
         sessionAgentMap.get(sessionID) === 'orchestrator',
@@ -355,8 +363,15 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
     presetManager = createPresetManager(ctx, config);
     divoomManager = createDivoomManager(config.divoom);
 
+    cancelTaskTools = createCancelTaskTool({
+      client: ctx.client,
+      backgroundJobBoard,
+      shouldManageSession: (sessionID) =>
+        sessionAgentMap.get(sessionID) === 'orchestrator',
+    });
     toolCount =
       Object.keys(councilTools).length +
+      Object.keys(cancelTaskTools).length +
       Object.keys(todoContinuationHook.tool).length +
       1 + // webfetch
       2; // ast_grep_search, ast_grep_replace
@@ -426,6 +441,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
     tool: {
       ...councilTools,
       ...observeTools,
+      ...cancelTaskTools,
       webfetch,
       ...todoContinuationHook.tool,
       ast_grep_search,

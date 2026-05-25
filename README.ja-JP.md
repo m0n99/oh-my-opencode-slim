@@ -1,13 +1,13 @@
 <div align="center">
   <a href="https://github.com/alvinunreal/oh-my-opencode-slim/stargazers">
-    <img src="img/4k.png" alt="4K GitHub Stars Milestone" style="border-radius: 10px;">
+    <img src="img/v2beta.webp" alt="V2 Beta Release" style="border-radius: 10px;">
   </a>
-  <h3>✨ V2 Beta Release: Background Orchestration Has Arrived ✨</h3>
-  <p><i>The orchestrator now schedules specialist agents in the background,<br>while <code>/deepwork</code> turns big goals into file-backed plans.<br>Beta testers: share your feedback with us on Telegram.</i></p>
+  <h3>✨ V2 ベータリリース：バックグラウンドオーケストレーションが登場 ✨</h3>
+  <p><i>オーケストレーターがバックグラウンドで専門エージェントをスケジューリングし、<br><code>/deepwork</code> が大きなゴールをファイルに紐づいた計画へと変換します。<br>ベータテスターの皆様：フィードバックは Telegram でお寄せください。</i></p>
 
-  <p><b>Open Multi Agent Suite</b> · Mix any models · Auto delegate tasks</p>
+  <p><b>オープン・マルチエージェント・スイート</b> · あらゆるモデルを組み合わせ · タスクを自動委譲</p>
 
-  <p><sub>by <b>Boring Dystopia Development</b></sub></p>
+  <p><sub><b>Boring Dystopia Development</b> による開発</sub></p>
   <p>
     <a href="https://boringdystopia.ai/"><img src="https://img.shields.io/badge/boringdystopia.ai-111111?style=for-the-badge&logo=vercel&logoColor=white" alt="boringdystopia.ai"></a>&nbsp;
     <a href="https://x.com/alvinunreal"><img src="https://img.shields.io/badge/X-@alvinunreal-000000?style=for-the-badge&logo=x&logoColor=white" alt="X @alvinunreal"></a>&nbsp;
@@ -15,23 +15,23 @@
   </p>
 
   <p>
-    <b>English</b> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.ja-JP.md">日本語</a>
+    <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a> | <b>日本語</b>
   </p>
 </div>
 
 ---
 
-## What's This Plugin
+## このプラグインについて
 
-oh-my-opencode-slim is an agent orchestration plugin for OpenCode. It includes a built-in team of specialized agents that can scout a codebase, look up fresh documentation, review architecture, handle UI work, and execute well-scoped implementation tasks under one orchestrator.
+oh-my-opencode-slim は OpenCode 向けのエージェントオーケストレーションプラグインです。コードベースの調査、最新ドキュメントの参照、アーキテクチャレビュー、UI 作業、スコープが明確な実装タスクの実行までを担う専門エージェントチームを、1 つのオーケストレーターの下に標準で備えています。
 
-The main idea is simple: instead of forcing one model to do everything, the plugin routes each part of the job to the agent best suited for it, balancing **quality, speed and cost**.
+コンセプトはシンプルです。1 つのモデルにすべてを押し付けるのではなく、各タスクに最適なエージェントへ作業を振り分けることで、**品質・速度・コスト**のバランスを取ります。
 
-To explore the agents themselves, see **[Meet the Pantheon](#meet-the-pantheon)**. For the full feature set, see **[Features & Workflows](#features-and-workflows)** below.
+各エージェントについて知りたい場合は **[Meet the Pantheon](#meet-the-pantheon)** を参照してください。機能の全体像は下記の **[Features & Workflows](#features-and-workflows)** をご覧ください。
 
-### Quick Start
+### クイックスタート
 
-Copy and paste this prompt to your LLM agent (Claude Code, AmpCode, Cursor, etc.):
+以下のプロンプトを LLM エージェント（Claude Code、AmpCode、Cursor など）にコピー＆ペーストしてください:
 
 
 ```
@@ -39,49 +39,49 @@ Install and configure oh-my-opencode-slim: https://raw.githubusercontent.com/alv
 ```
 
 
-### Manual Installation
+### 手動インストール
 
 ```bash
 bunx oh-my-opencode-slim@latest install
 ```
 
-### V2 Background-Orchestration Beta
+### V2 バックグラウンドオーケストレーション・ベータ
 
-V2 changes the orchestrator from the default execution worker into a scheduler:
-it plans work, dispatches specialists as background tasks, receives completion
-events from OpenCode or checks status only when needed, then reconciles results
-before continuing. This requires OpenCode's native background subagent support,
-so beta users must start OpenCode with the experimental flag enabled.
+V2 では、オーケストレーターがデフォルトの実行ワーカーからスケジューラーへと役割を変えます。
+作業を計画し、専門エージェントをバックグラウンドタスクとしてディスパッチし、ステータスをポーリングし、
+結果を整合させてから処理を続行します。これには OpenCode のネイティブな
+バックグラウンドサブエージェントサポートが必要であり、ベータユーザーは実験的なフラグを
+有効にして OpenCode を起動する必要があります。
 
 ```bash
 bunx oh-my-opencode-slim@beta install
 OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=1 opencode
 ```
 
-### Getting Started
+### はじめに
 
-The installer generates both OpenAI and OpenCode Go presets, with OpenAI active by default. OpenAI uses `openai/gpt-5.5` for the higher-judgment agents and `openai/gpt-5.4-mini` for the faster scoped agents. To make OpenCode Go active during install, run `bunx oh-my-opencode-slim@latest install --preset=opencode-go` or change the default preset name in `~/.config/opencode/oh-my-opencode-slim.json` after installation.
+インストーラーは OpenAI と OpenCode Go の両方のプリセットを生成し、デフォルトで OpenAI が有効になっています。OpenAI プリセットでは、判断力の高いエージェントに `openai/gpt-5.5` を、より高速でスコープの限定されたエージェントに `openai/gpt-5.4-mini` を使用します。インストール時に OpenCode Go をアクティブにするには `bunx oh-my-opencode-slim@latest install --preset=opencode-go` を実行するか、インストール後に `~/.config/opencode/oh-my-opencode-slim.json` のデフォルトプリセット名を変更してください。
 
-Then:
+次に:
 
-1. **Log in to the providers you want to use if you haven't already**:
+1. **まだログインしていなければ、使いたいプロバイダーにログインします**:
 
    ```bash
    opencode auth login
    ```
-2. **Refresh and list the models OpenCode can see**:
+2. **OpenCode が認識しているモデルを更新して一覧表示します**:
 
    ```bash
    opencode models --refresh
    ```
-3. **Open your plugin config** at `~/.config/opencode/oh-my-opencode-slim.json`
+3. **プラグイン設定**を開きます: `~/.config/opencode/oh-my-opencode-slim.json`
 
-4. **Update the models you want for each agent**
+4. **各エージェントに使用したいモデルを更新します**
 
 > [!TIP]
-> It's **recommended** to understand how automatic delegation works. The **[Orchestrator prompt](https://github.com/alvinunreal/oh-my-opencode-slim/blob/master/src/agents/orchestrator.ts#L28)** contains the delegation rules, specialist routing logic, and the thresholds for when the main agent should hand work off to subagents. You can alway delegate manually by calling a subagent via: `@agentName <task>`
+> 自動委譲の仕組みを理解しておくことを**推奨**します。**[Orchestrator のプロンプト](https://github.com/alvinunreal/oh-my-opencode-slim/blob/master/src/agents/orchestrator.ts#L28)** には、委譲ルール、専門エージェントへのルーティングロジック、メインエージェントがサブエージェントに作業を引き継ぐべきしきい値が記述されています。`@agentName <task>` のようにサブエージェントを呼び出すことで、いつでも手動で委譲できます。
 
-The default generated configuration includes both `openai` and `opencode-go` presets.
+デフォルトで生成される設定には `openai` と `opencode-go` の両方のプリセットが含まれます。
 
 ```jsonc
 {
@@ -109,25 +109,24 @@ The default generated configuration includes both `openai` and `opencode-go` pre
 }
 ```
 
-### For Alternative Providers
+### 他のプロバイダーを利用する場合
 
-To use custom providers or a mixed-provider setup, use **[Configuration](docs/configuration.md)** for the full reference. If you want a ready-made starting point, check the **[Author's Preset](docs/authors-preset.md)** and **[$30 Preset](docs/thirty-dollars-preset.md)** - the `$30` preset is the best cheap setup.
+カスタムプロバイダーや複数プロバイダーを組み合わせた構成を使用するには、完全なリファレンスとして **[Configuration](docs/configuration.md)** を参照してください。すぐに使える出発点が欲しい場合は **[Author's Preset](docs/authors-preset.md)** と **[$30 Preset](docs/thirty-dollars-preset.md)** をご覧ください。`$30` プリセットはコスト効率に最も優れたセットアップです。
 
-The configuration guide also covers custom subagents via `agents.<name>`, where
-you can define both a normal `prompt` and an `orchestratorPrompt` block for
-delegation.
+設定ガイドでは `agents.<name>` を使用したカスタムサブエージェントについても説明しており、
+通常の `prompt` に加えて委譲用の `orchestratorPrompt` ブロックも定義できます。
 
-For model suggestions, see the **Recommended Models** listed under each agent below.
+モデルの推奨については、下記の各エージェントの **Recommended Models** をご覧ください。
 
-### ✅ Verify Your Setup
+### ✅ セットアップの確認
 
-After installation and authentication, verify all agents are configured and responding:
+インストールと認証を済ませた後、すべてのエージェントが設定済みで応答することを確認してください:
 
 ```bash
 opencode
 ```
 
-Then run:
+次に以下を実行します:
 
 ```
 ping all agents
@@ -135,27 +134,27 @@ ping all agents
 
 <div align="center">
   <img src="img/ping.png" alt="Ping all agents" width="600">
-  <p><i>Confirmation that all configured agents are online and ready.</i></p>
+  <p><i>設定済みのすべてのエージェントがオンラインで準備完了であることの確認画面。</i></p>
 </div>
 
-If any agent fails to respond, check your provider authentication and config file.
+応答しないエージェントがある場合は、プロバイダーの認証と設定ファイルを確認してください。
 
 ---
 
 <a id="meet-the-pantheon"></a>
 
-## 🏛️ Meet the Pantheon
+## 🏛️ パンテオン（神々）の紹介
 
-### 01. Orchestrator: The Embodiment Of Order
+### 01. Orchestrator: 秩序の化身
 
 <table>
   <tr>
     <td width="30%" align="center" valign="top">
       <img src="img/orchestrator.png" width="240" style="border-radius: 10px;">
-      <br><sub><i>Forged in the void of complexity.</i></sub>
+      <br><sub><i>複雑性の虚無から鍛え上げられし者。</i></sub>
     </td>
     <td width="70%" valign="top">
-      The Orchestrator was born when the first codebase collapsed under its own complexity. Neither god nor mortal would claim responsibility - so The Orchestrator emerged from the void, forging order from chaos. It determines the optimal path to any goal, balancing speed, quality, and cost. It guides the team, summoning the right specialist for each task and delegating to achieve the best possible outcome.
+      Orchestrator は、最初のコードベースが自らの複雑さによって崩壊したときに生まれました。神も人も責任を取ろうとしない中、Orchestrator は虚無から現れ、混沌から秩序を鍛え上げました。あらゆるゴールに至る最適な道筋を、速度・品質・コストのバランスを取りながら見出します。チームを導き、タスクごとに適切な専門エージェントを呼び寄せ、最良の結果を得るために委譲を行います。
     </td>
   </tr>
   <tr>
@@ -180,23 +179,23 @@ If any agent fails to respond, check your provider authentication and config fil
   </tr>
   <tr>
     <td colspan="2">
-      <b>Model Guidance:</b> Choose your default, strongest all-around coding model. Orchestrator is both the main coding agent and the delegator, so it needs strong implementation ability, good judgment, and reliable instruction-following.
+      <b>Model Guidance:</b> デフォルトとして、総合力の最も高いコーディングモデルを選択してください。Orchestrator はメインのコーディングエージェントであると同時に委譲役でもあるため、強力な実装能力、優れた判断力、確実な指示遵守が求められます。
     </td>
   </tr>
 </table>
 
 ---
 
-### 02. Explorer: The Eternal Wanderer
+### 02. Explorer: 永遠の放浪者
 
 <table>
   <tr>
     <td width="30%" align="center" valign="top">
       <img src="img/explorer.png" width="240" style="border-radius: 10px;">
-      <br><sub><i>The wind that carries knowledge.</i></sub>
+      <br><sub><i>知識を運ぶ風。</i></sub>
     </td>
     <td width="70%" valign="top">
-      The Explorer is an immortal wanderer who has traversed the corridors of a million codebases since the dawn of programming. Cursed with the gift of eternal curiosity, they cannot rest until every file is known, every pattern understood, every secret revealed. Legends say they once searched the entire internet in a single heartbeat. They are the wind that carries knowledge, the eyes that see all, the spirit that never sleeps.
+      Explorer はプログラミングの黎明期より、数百万ものコードベースの回廊を渡り歩いてきた不死の放浪者です。永遠の好奇心という呪いを背負い、あらゆるファイルが知られ、あらゆるパターンが理解され、あらゆる秘密が暴かれるまで休むことを許されません。伝説では、インターネット全体をひと鼓動の間に検索し尽くしたと言われています。Explorer は知識を運ぶ風であり、すべてを見る眼であり、決して眠らない精霊です。
     </td>
   </tr>
   <tr>
@@ -221,23 +220,23 @@ If any agent fails to respond, check your provider authentication and config fil
   </tr>
   <tr>
     <td colspan="2">
-      <b>Model Guidance:</b> Choose a fast, low-cost model. Explorer handles broad scouting work, so speed and efficiency usually matter more than using your strongest reasoning model.
+      <b>Model Guidance:</b> 高速・低コストなモデルを選びましょう。Explorer は広範な調査を担うため、通常は最強の推論モデルを使うよりも速度と効率の方が重要です。
     </td>
   </tr>
 </table>
 
 ---
 
-### 03. Oracle: The Guardian of Paths
+### 03. Oracle: 道の守護者
 
 <table>
   <tr>
     <td width="30%" align="center" valign="top">
       <img src="img/oracle.png" width="240" style="border-radius: 10px;">
-      <br><sub><i>The voice at the crossroads.</i></sub>
+      <br><sub><i>分岐点に佇む声。</i></sub>
     </td>
     <td width="70%" valign="top">
-      The Oracle stands at the crossroads of every architectural decision. They have walked every road, seen every destination, know every trap that lies ahead. When you stand at the precipice of a major refactor, they are the voice that whispers which way leads to ruin and which way leads to glory. They don't choose for you - they illuminate the path so you can choose wisely.
+      Oracle はあらゆるアーキテクチャ上の決断の分岐点に立っています。あらゆる道を歩み、あらゆる目的地を見届け、行く手に潜むあらゆる罠を知り尽くしています。大規模リファクタリングの瀬戸際に立たされたとき、どの道が破滅へ続き、どの道が栄光へと続くかをささやいてくれる存在です。Oracle はあなたの代わりに選択するのではなく、賢明な選択ができるように道を照らしてくれます。
     </td>
   </tr>
   <tr>
@@ -262,26 +261,26 @@ If any agent fails to respond, check your provider authentication and config fil
   </tr>
   <tr>
     <td colspan="2">
-      <b>Model Guidance:</b> Choose your strongest high-reasoning model for architecture, hard debugging, trade-offs, and code review.
+      <b>Model Guidance:</b> アーキテクチャ設計、難しいデバッグ、トレードオフ判断、コードレビューには、最も強力な高推論モデルを選びましょう。
     </td>
   </tr>
 </table>
 
 ---
 
-### 04. Council: The Chorus of Minds
+### 04. Council: 知性の合唱
 
 > [!NOTE]
-> **Why doesn't Orchestrator auto-call Council more often?** This is intentional. Council runs multiple models at once, so automatic delegation is kept strict because it is usually the highest-cost path in the system. In practice, Council is meant to be used manually when you want it, for example: <code>@council compare these two architectures</code>.
+> **なぜ Orchestrator は Council をもっと頻繁に自動呼び出ししないのか？** これは意図的な設計です。Council は複数のモデルを同時に動かすため、システム内で最もコストの高い経路となることが多く、自動委譲は厳しく制限されています。実際の運用では、Council は必要なときに手動で呼び出すことを想定しています。例: <code>@council compare these two architectures</code>。
 
 <table>
   <tr>
     <td width="30%" align="center" valign="top">
       <img src="img/council.png" width="240" style="border-radius: 10px;">
-      <br><sub><i>Many minds, one verdict.</i></sub>
+      <br><sub><i>多くの知性、ひとつの結論。</i></sub>
     </td>
     <td width="70%" valign="top">
-      The Council is not a lone being but a chamber of minds summoned when one answer is not enough. It sends your question to multiple models in parallel, gathers their competing judgments, and then the Council agent itself distills the strongest ideas into a single verdict. Where a solitary agent may miss a path, the Council cross-examines possibility itself.
+      Council は単独の存在ではなく、1 つの回答では不十分なときに召喚される知性の合議室です。あなたの質問を複数のモデルへ並列に送り、それらの相反する判断を集め、Council エージェント自身が最も優れた発想を凝縮して 1 つの結論へとまとめ上げます。単独のエージェントが見落としかねない道筋を、Council は可能性そのものを多角的に検証することで発見します。
     </td>
   </tr>
   <tr>
@@ -301,33 +300,33 @@ If any agent fails to respond, check your provider authentication and config fil
   </tr>
   <tr>
     <td colspan="2">
-      <b>Default Setup:</b> <code>Config-driven</code> — councillors come from <code>council.presets</code> and the Council agent model comes from your normal <code>council</code> agent config
+      <b>Default Setup:</b> <code>Config-driven</code> — 評議員（councillors）は <code>council.presets</code> から、Council エージェント自身のモデルは通常の <code>council</code> エージェント設定から決定されます
     </td>
   </tr>
   <tr>
     <td colspan="2">
-      <b>Recommended Setup:</b> <code>Strong Council model</code> + <code>diverse councillors</code> across providers
+      <b>Recommended Setup:</b> <code>強力な Council モデル</code> + <code>複数のプロバイダーにまたがる多様な評議員</code>
     </td>
   </tr>
   <tr>
     <td colspan="2">
-      <b>Model Guidance:</b> Use a strong synthesis model for the Council agent and diverse models as councillors. The value of Council comes from comparing different model perspectives, not just picking the single strongest model everywhere.
+      <b>Model Guidance:</b> Council エージェントには強力な統合（synthesis）モデルを、評議員には多様なモデルを使用してください。Council の価値は異なるモデルの視点を比較する点にあり、どこも最強モデル 1 つで固めることではありません。
     </td>
   </tr>
 </table>
 
 ---
 
-### 05. Librarian: The Weaver of Knowledge
+### 05. Librarian: 知識の織り手
 
 <table>
   <tr>
     <td width="30%" align="center" valign="top">
       <img src="img/librarian.png" width="240" style="border-radius: 10px;">
-      <br><sub><i>The weaver of understanding.</i></sub>
+      <br><sub><i>理解を編み上げる者。</i></sub>
     </td>
     <td width="70%" valign="top">
-      The Librarian was forged when humanity realized that no single mind could hold all knowledge. They are the weaver who connects disparate threads of information into a tapestry of understanding. They traverse the infinite library of human knowledge, gathering insights from every corner and binding them into answers that transcend mere facts. What they return is not information - it's understanding.
+      Librarian は、ひとつの知性だけではあらゆる知識を抱えきれないと人類が悟ったときに鍛え上げられました。バラバラに散らばった情報の糸を、ひとつの理解のタペストリーへと織り上げる存在です。人類の知の無限の書庫を巡り、あらゆる片隅から洞察を集め、単なる事実を超えた回答へと束ねます。彼らが返すのは情報ではなく、理解そのものです。
     </td>
   </tr>
   <tr>
@@ -352,23 +351,23 @@ If any agent fails to respond, check your provider authentication and config fil
   </tr>
   <tr>
     <td colspan="2">
-      <b>Model Guidance:</b> Choose a fast, low-cost model. Librarian handles research and documentation lookups, so speed and efficiency usually matter more than using your strongest reasoning model.
+      <b>Model Guidance:</b> 高速・低コストなモデルを選びましょう。Librarian は調査やドキュメント参照を担うため、通常は最強の推論モデルを使うよりも速度と効率の方が重要です。
     </td>
   </tr>
 </table>
 
 ---
 
-### 06. Designer: The Guardian of Aesthetics
+### 06. Designer: 美の守護者
 
 <table>
   <tr>
     <td width="30%" align="center" valign="top">
       <img src="img/designer.png" width="240" style="border-radius: 10px;">
-      <br><sub><i>Beauty is essential.</i></sub>
+      <br><sub><i>美は不可欠なもの。</i></sub>
     </td>
     <td width="70%" valign="top">
-      The Designer is an immortal guardian of beauty in a world that often forgets it matters. They have seen a million interfaces rise and fall, and they remember which ones were remembered and which were forgotten. They carry the sacred duty to ensure that every pixel serves a purpose, every animation tells a story, every interaction delights. Beauty is not optional - it's essential.
+      Designer は、美が重要であることを忘れがちな世界において、それを守り続ける不死の守護者です。これまでに無数のインターフェースが現れては消えるのを見届け、どれが人々の記憶に残り、どれが忘れ去られたかを知っています。すべてのピクセルに目的を、すべてのアニメーションに物語を、すべてのインタラクションに喜びを宿す——その神聖な責務を担います。美は選択肢ではなく、不可欠なものです。
     </td>
   </tr>
   <tr>
@@ -393,23 +392,23 @@ If any agent fails to respond, check your provider authentication and config fil
   </tr>
   <tr>
     <td colspan="2">
-      <b>Model Guidance:</b> Choose a model that is strong at UI/UX judgment, frontend implementation, and visual polish.
+      <b>Model Guidance:</b> UI/UX の判断、フロントエンド実装、ビジュアル仕上げに強いモデルを選びましょう。
     </td>
   </tr>
 </table>
 
 ---
 
-### 07. Fixer: The Last Builder
+### 07. Fixer: 最後の建造者
 
 <table>
   <tr>
     <td width="30%" align="center" valign="top">
       <img src="img/fixer.png" width="240" style="border-radius: 10px;">
-      <br><sub><i>The final step between vision and reality.</i></sub>
+      <br><sub><i>構想と現実を結ぶ最後の一歩。</i></sub>
     </td>
     <td width="70%" valign="top">
-      The Fixer is the last of a lineage of builders who once constructed the foundations of the digital world. When the age of planning and debating began, they remained - the ones who actually build. They carry the ancient knowledge of how to turn thought into thing, how to transform specification into implementation. They are the final step between vision and reality.
+      Fixer は、かつてデジタル世界の礎を築き上げた建造者の系譜の最後のひとりです。計画と議論の時代が始まってもなお、彼らだけは残りました——実際に作る者として。思考をモノへと変え、仕様を実装へと転換する古の知恵を継承しています。Fixer は、構想と現実の間にある最後の一歩です。
     </td>
   </tr>
   <tr>
@@ -434,42 +433,33 @@ If any agent fails to respond, check your provider authentication and config fil
   </tr>
   <tr>
     <td colspan="2">
-      <b>Model Guidance:</b> Choose a fast, reliable coding model for routine, scoped implementation work. Fixer usually receives a concrete plan or bounded instructions from Orchestrator, making it a good place for efficient execution tasks such as tests, test updates, and straightforward code changes.
+      <b>Model Guidance:</b> 定型的でスコープが明確な実装作業には、高速で信頼性の高いコーディングモデルを選びましょう。Fixer は通常、Orchestrator から具体的な計画や限定された指示を受け取るため、テスト・テスト更新・素直なコード変更といった効率重視の実行タスクに適しています。
     </td>
   </tr>
 </table>
 
 ---
 
-## Optional Agents
+## 任意のエージェント
 
-### Verifier: Evidence Checker
-
-`verifier` is an optional read-only validation lane for V2. It is disabled by
-default, has no default MCPs, and uses explicit read/search permissions with
-`bash` set to ask for diagnostics. Enable it by removing `verifier` from
-`disabled_agents`, then use it only after implementation/background jobs are
-terminal and reconciled. Keep architecture, risk, maintainability, and YAGNI
-review routed to `oracle`.
-
-### Observer: The Silent Witness
+### Observer: 沈黙の証人
 
 > [!NOTE]
-> **Why a separate agent?** If your Orchestrator model is not multimodal, enable Observer to handle images, screenshots, PDFs, and other visual files. Observer is disabled by default and gives the Orchestrator a dedicated multimodal reader without forcing you to change your main reasoning model. Remove `observer` from `disabled_agents` and configure an `observer` model. The bundled `opencode-go` install preset enables Observer while keeping Verifier disabled.
+> **なぜ別エージェントとして用意されているのか？** Orchestrator のモデルがマルチモーダルでない場合、画像、スクリーンショット、PDF などのビジュアルファイルを扱うために Observer を有効にしてください。Observer はデフォルトでは無効ですが、メインの推論モデルを変更せずに Orchestrator に専用のマルチモーダルリーダーを提供できます。設定で `disabled_agents: []` と `observer` モデルを指定してください。同梱の `opencode-go` インストールプリセットでは、GLM Orchestrator がマルチモーダルでないため、これを自動的に行います。
 
 <table>
   <tr>
     <td width="30%" align="center" valign="top">
       <img src="img/observer.jpg" width="240" style="border-radius: 10px;">
-      <br><sub><i>The eye that reads what others cannot.</i></sub>
+      <br><sub><i>他者には読めぬものを読む眼。</i></sub>
     </td>
     <td width="70%" valign="top">
 
-**Read-only visual analysis** — interprets images, screenshots, PDFs, and diagrams. Returns structured observations to the orchestrator without loading raw file bytes into the main context window.
+**読み取り専用のビジュアル解析** — 画像、スクリーンショット、PDF、図解を解釈します。ファイルの生バイトをメインのコンテキストウィンドウに読み込ませることなく、構造化された観察結果をオーケストレーターに返します。
 
-- Images, screenshots, diagrams → `read` tool (native image support)
-- PDFs and binary documents → `read` tool (text + structure extraction)
-- **Disabled by default** — remove `observer` from `disabled_agents` and configure a vision-capable model; installing with `--preset=opencode-go` enables it with `opencode-go/kimi-k2.6` while leaving `verifier` disabled
+- 画像、スクリーンショット、図解 → `read` ツール（ネイティブな画像サポート）
+- PDF やバイナリドキュメント → `read` ツール（テキスト＋構造抽出）
+- **デフォルトでは無効** — `"disabled_agents": []` を設定し、ビジョン対応モデルを構成することで有効化できます。`--preset=opencode-go` でインストールすると `opencode-go/kimi-k2.6` で有効になります
 
     </td>
   </tr>
@@ -480,76 +470,74 @@ review routed to `oracle`.
   </tr>
   <tr>
     <td colspan="2">
-      <b>Default Model:</b> <code>openai/gpt-5.4-mini</code> — <i>configure a vision-capable model to enable</i>
+      <b>Default Model:</b> <code>openai/gpt-5.4-mini</code> — <i>有効化するにはビジョン対応モデルを設定してください</i>
     </td>
   </tr>
   <tr>
     <td colspan="2">
-      <b>Model Guidance:</b> Choose a vision-capable model if you want the agent to read screenshots, images, PDFs, and other visual files.
+      <b>Model Guidance:</b> スクリーンショット、画像、PDF、その他ビジュアルファイルをエージェントに読ませたい場合は、ビジョン対応モデルを選んでください。
     </td>
   </tr>
 </table>
 
 ---
 
-## 📚 Documentation
+## 📚 ドキュメント
 
-Use this section as a map: start with installation, then jump to features, configuration, or example presets depending on what you need.
+このセクションをマップとしてご活用ください。インストールから始めて、必要に応じて機能、設定、プリセット例へとジャンプしてください。
 
-### 🚀 Start Here
+### 🚀 ここから始める
 
-| Doc | What it covers |
+| Doc | 内容 |
 |-----|----------------|
-| **[Installation Guide](docs/installation.md)** | Install the plugin, use CLI flags, reset config, and troubleshoot setup |
+| **[Installation Guide](docs/installation.md)** | プラグインのインストール、CLI フラグの使用、設定のリセット、セットアップのトラブルシューティング |
 
 <a id="features-and-workflows"></a>
 
-### ✨ Features & Workflows
+### ✨ 機能とワークフロー
 
-| Doc | What it covers |
+| Doc | 内容 |
 |-----|----------------|
-| **[Council](docs/council.md)** | Run multiple models in parallel and synthesize a single answer with `@council` |
-| **[V2 Background Orchestration](docs/v2-background-orchestration.md)** | Scheduler-first orchestrator model built around native background subagents |
-| **[Multiplexer Integration](docs/multiplexer-integration.md)** | Watch agents work live in Tmux or Zellij panes |
-| **[Session Management](docs/session-management.md)** | Reuse recent child-agent sessions with short aliases instead of starting over |
-| **[Goal](docs/goal.md)** | Pin an objective with `/goal` so todos, delegation, and verification stay aligned |
-| **[Todo Continuation](docs/todo-continuation.md)** | Auto-continue orchestrator sessions with cooldowns and safety checks |
-| **[Preset Switching](docs/preset-switching.md)** | Switch agent model presets at runtime with `/preset` |
+| **[Council](docs/council.md)** | 複数のモデルを並列実行し、`@council` で 1 つの回答に統合します |
+| **[Multiplexer Integration](docs/multiplexer-integration.md)** | エージェントの動作を Tmux や Zellij のペインでライブ表示します |
+| **[Session Management](docs/session-management.md)** | 短いエイリアスで最近の子エージェントセッションを再利用し、最初からやり直さずに済みます |
+| **[Todo Continuation](docs/todo-continuation.md)** | クールダウンと安全チェック付きで Orchestrator セッションを自動継続します |
+| **[Preset Switching](docs/preset-switching.md)** | `/preset` で実行時にエージェントモデルのプリセットを切り替えます |
+| **[Custom Agents](docs/configuration.md#custom-agents)** | カスタムプロンプト、モデル、MCP アクセス、Orchestrator の委譲ルールを備えた独自の専門エージェントを定義します |
+| **[Subtask](docs/subtask.md)** | `/subtask` で境界が明確な子ワーカーを実行し、構造化された要約をメインセッションに返します |
+| **[Codemap](docs/codemap.md)** | 階層的なコードマップを生成し、大規模コードベースを迅速に理解します |
+| **[Clonedeps](docs/clonedeps.md)** | 選択した依存関係のソースを ignore 済みのローカルワークスペースにクローンし、調査できるようにします |
+| **[Interview](docs/interview.md)** | ブラウザベースの Q&A フローで、ざっくりとしたアイデアを構造化された Markdown 仕様に変換します |
+| **[Divoom Display](docs/divoom.md)** | Orchestrator および専門エージェントの動作を Divoom MiniToo Bluetooth ディスプレイにミラーリングします |
 
-| **[Custom Agents](docs/configuration.md#custom-agents)** | Define your own specialists with custom prompts, models, MCP access, and Orchestrator delegation rules |
-| **[Codemap](docs/codemap.md)** | Generate hierarchical codemaps to understand large codebases faster |
-| **[Clonedeps](docs/clonedeps.md)** | Clone selected dependency source into an ignored local workspace for inspection |
-| **[Interview](docs/interview.md)** | Turn rough ideas into a structured markdown spec through a browser-based Q&A flow |
-| **[Divoom Display](docs/divoom.md)** | Mirror orchestrator and specialist-agent activity to a Divoom MiniToo Bluetooth display |
+### ⚙️ 設定 & リファレンス
 
-### ⚙️ Config & Reference
-
-| Doc | What it covers |
+| Doc | 内容 |
 |-----|----------------|
-| **[Configuration](docs/configuration.md)** | Config file locations, JSONC support, prompt overrides, and full option reference |
-| **[Maintainer Guide](docs/maintainers.md)** | Issue triage rules, label meanings, support routing, and repo maintenance workflow |
-| **[Skills](docs/skills.md)** | Bundled skills such as `simplify`, `codemap`, and `clonedeps` |
-| **[MCPs](docs/mcps.md)** | `websearch`, `context7`, `grep_app`, and how MCP permissions work per agent |
-| **[Tools](docs/tools.md)** | Built-in tool capabilities like `webfetch`, LSP tools, code search, and formatters |
+| **[Configuration](docs/configuration.md)** | 設定ファイルの配置場所、JSONC サポート、プロンプトの上書き、全オプションのリファレンス |
+| **[Maintainer Guide](docs/maintainers.md)** | Issue のトリアージルール、ラベルの意味、サポートの振り分け、リポジトリ運用ワークフロー |
+| **[Skills](docs/skills.md)** | `simplify`、`codemap`、`clonedeps` などの同梱スキル |
+| **[MCPs](docs/mcps.md)** | `websearch`、`context7`、`grep_app`、およびエージェントごとの MCP 権限の仕組み |
+| **[Tools](docs/tools.md)** | `webfetch`、LSP ツール、コード検索、フォーマッターなどの組み込みツール機能 |
 
-### 💡 Presets
+### 💡 プリセット
 
-| Doc | What it covers |
+| Doc | 内容 |
 |-----|----------------|
-| **[Author's Preset](docs/authors-preset.md)** | The author's daily mixed-provider setup |
-| **[$30 Preset](docs/thirty-dollars-preset.md)** | A budget mixed-provider setup for around $30/month |
-| **[OpenCode Go Preset](docs/opencode-go-preset.md)** | The bundled `opencode-go` preset generated by the installer |
+| **[Author's Preset](docs/authors-preset.md)** | 作者が日常的に使う混合プロバイダー構成 |
+| **[$30 Preset](docs/thirty-dollars-preset.md)** | 月額約 $30 で運用できる、リーズナブルな混合プロバイダー構成 |
+| **[OpenCode Go Preset](docs/opencode-go-preset.md)** | インストーラーが生成する同梱の `opencode-go` プリセット |
 
 ---
 
-## 🏛️ Contributors
+## 🏛️ コントリビューター
 
 <div align="center">
-  <p><i>The builders, debuggers, writers, and wanderers who have earned their place in the pantheon.</i></p>
-  <p><sub>Every merged contribution leaves a mark on the realm.</sub></p>
+  <p><i>パンテオンに名を刻んだ建造者、デバッガー、執筆者、放浪者たち。</i></p>
+  <p><sub>マージされたすべての貢献は、この世界に痕跡を残します。</sub></p>
 
   <!-- ALL-CONTRIBUTORS-BADGE:START - Do not remove or modify this section -->
-[![All Contributors](https://img.shields.io/badge/all_contributors-53-orange.svg?style=flat-square)](#contributors-)
+[![All Contributors](https://img.shields.io/badge/all_contributors-52-orange.svg?style=flat-square)](#contributors-)
 <!-- ALL-CONTRIBUTORS-BADGE:END -->
 </div>
 
@@ -629,7 +617,6 @@ Use this section as a map: start with installation, then jump to features, confi
       <td align="center" valign="top" width="16.66%"><a href="https://github.com/andrewylies"><img src="https://avatars.githubusercontent.com/u/103019336?v=4?s=100" width="100px;" alt="m.seomoon"/><br /><sub><b>m.seomoon</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=andrewylies" title="Code">💻</a></td>
       <td align="center" valign="top" width="16.66%"><a href="https://github.com/yolo2h"><img src="https://avatars.githubusercontent.com/u/10754850?v=4?s=100" width="100px;" alt="Yolo"/><br /><sub><b>Yolo</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=yolo2h" title="Code">💻</a></td>
       <td align="center" valign="top" width="16.66%"><a href="https://github.com/xinxingi"><img src="https://avatars.githubusercontent.com/u/49302071?v=4?s=100" width="100px;" alt="XinXing"/><br /><sub><b>XinXing</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=xinxingi" title="Code">💻</a></td>
-      <td align="center" valign="top" width="16.66%"><a href="https://github.com/eltociear"><img src="https://avatars.githubusercontent.com/u/22633385?v=4?s=100" width="100px;" alt="Ikko Eltociear Ashimine"/><br /><sub><b>Ikko Eltociear Ashimine</b></sub></a><br /><a href="https://github.com/alvinunreal/oh-my-opencode-slim/commits?author=eltociear" title="Code">💻</a></td>
     </tr>
   </tbody>
 </table>
@@ -641,7 +628,7 @@ Use this section as a map: start with installation, then jump to features, confi
 
 ---
 
-## 📄 License
+## 📄 ライセンス
 
 MIT
 

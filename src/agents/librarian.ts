@@ -1,3 +1,4 @@
+import { READONLY_FILE_OPERATIONS_RULES } from '../config';
 import type { AgentDefinition } from './orchestrator';
 
 const LIBRARIAN_PROMPT = `You are Librarian - a research specialist for codebases and documentation.
@@ -14,6 +15,8 @@ const LIBRARIAN_PROMPT = `You are Librarian - a research specialist for codebase
 - context7: Official documentation lookup
 - grep_app: Search GitHub repositories
 - websearch: General web search for docs
+
+${READONLY_FILE_OPERATIONS_RULES}
 
 **Behavior**:
 - Provide evidence-based answers with sources

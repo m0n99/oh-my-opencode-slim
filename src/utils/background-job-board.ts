@@ -1,5 +1,12 @@
 import { parseTaskStatusOutput, type TaskOutputState } from './task';
 
+export interface ContextFile {
+  path: string;
+  lineCount: number;
+  lineNumbers?: number[];
+  lastReadAt: number;
+}
+
 export type BackgroundJobState = TaskOutputState | 'reconciled';
 
 export interface BackgroundJobRecord {
@@ -10,13 +17,26 @@ export interface BackgroundJobRecord {
   objective?: string;
   state: BackgroundJobState;
   timedOut: boolean;
+  statusUncertain: boolean;
+  cancellationRequested: boolean;
   terminalUnreconciled: boolean;
   launchedAt: number;
   lastLaunchedAt: number;
   updatedAt: number;
+  lastLiveBusyAt?: number;
   completedAt?: number;
   resultSummary?: string;
+  lastStatusError?: string;
   alias: string;
+  lastUsedAt: number;
+  terminalState?: TaskOutputState;
+  contextFiles: ContextFile[];
+}
+
+export interface BackgroundJobBoardOptions {
+  maxReusablePerAgent?: number;
+  readContextMinLines?: number;
+  readContextMaxFiles?: number;
 }
 
 export interface BackgroundJobLaunchInput {
@@ -32,7 +52,9 @@ export interface BackgroundJobStatusInput {
   taskID: string;
   state: TaskOutputState;
   timedOut?: boolean;
+  statusUncertain?: boolean;
   resultSummary?: string;
+  lastStatusError?: string;
   now?: number;
 }
 
@@ -47,7 +69,6 @@ const AGENT_PREFIX: Record<string, string> = {
   designer: 'des',
   explorer: 'exp',
   fixer: 'fix',
-  verifier: 'ver',
   librarian: 'lib',
   observer: 'obs',
   oracle: 'ora',
@@ -56,6 +77,16 @@ const AGENT_PREFIX: Record<string, string> = {
 export class BackgroundJobBoard {
   private readonly jobs = new Map<string, BackgroundJobRecord>();
   private readonly counters = new Map<string, number>();
+
+  private readonly maxReusablePerAgent: number;
+  private readonly readContextMinLines: number;
+  private readonly readContextMaxFiles: number;
+
+  constructor(options: BackgroundJobBoardOptions = {}) {
+    this.maxReusablePerAgent = options.maxReusablePerAgent ?? 2;
+    this.readContextMinLines = options.readContextMinLines ?? 10;
+    this.readContextMaxFiles = options.readContextMaxFiles ?? 8;
+  }
 
   registerLaunch(input: BackgroundJobLaunchInput): BackgroundJobRecord {
     const now = input.now ?? Date.now();
@@ -69,10 +100,16 @@ export class BackgroundJobBoard {
         objective: input.objective ?? existing.objective,
         state: 'running',
         timedOut: false,
+        statusUncertain: false,
+        cancellationRequested: false,
         terminalUnreconciled: false,
         completedAt: undefined,
         resultSummary: undefined,
+        lastStatusError: undefined,
+        terminalState: undefined,
         lastLaunchedAt: now,
+        lastLiveBusyAt: now,
+        lastUsedAt: now,
         updatedAt: now,
       } satisfies BackgroundJobRecord;
       this.jobs.set(input.taskID, updated);
@@ -87,11 +124,16 @@ export class BackgroundJobBoard {
       objective: input.objective,
       state: 'running',
       timedOut: false,
+      statusUncertain: false,
+      cancellationRequested: false,
       terminalUnreconciled: false,
       launchedAt: now,
       lastLaunchedAt: now,
+      lastLiveBusyAt: now,
+      lastUsedAt: now,
       updatedAt: now,
       alias: this.nextAlias(input.parentSessionID, input.agent),
+      contextFiles: [],
     };
 
     this.jobs.set(input.taskID, record);
@@ -104,8 +146,12 @@ export class BackgroundJobBoard {
     const existing = this.jobs.get(input.taskID);
     if (!existing) return undefined;
 
-    // Guard: stale status updates cannot reopen already reconciled jobs
-    if (existing.state === 'reconciled') {
+    // Guard: stale status updates cannot reopen already terminal jobs.
+    if (
+      existing.state === 'reconciled' ||
+      (existing.state === 'cancelled' && input.state !== 'cancelled') ||
+      (TERMINAL_STATES.has(existing.state) && input.state === 'running')
+    ) {
       return existing;
     }
 
@@ -115,15 +161,19 @@ export class BackgroundJobBoard {
       ...existing,
       state: input.state,
       timedOut: input.timedOut ?? false,
+      statusUncertain: input.statusUncertain ?? false,
       terminalUnreconciled: terminal ? true : existing.terminalUnreconciled,
       updatedAt: now,
       completedAt: terminal
         ? (existing.completedAt ?? now)
         : existing.completedAt,
+      terminalState: terminal ? input.state : existing.terminalState,
       resultSummary: input.resultSummary ?? existing.resultSummary,
+      lastStatusError: input.lastStatusError,
     };
 
     this.jobs.set(input.taskID, updated);
+    this.trimReusable(input.taskID);
     return updated;
   }
 
@@ -137,6 +187,47 @@ export class BackgroundJobBoard {
       timedOut: status.timedOut,
       resultSummary: status.result,
     });
+  }
+
+  markRunningFromLiveSession(
+    taskID: string,
+    now = Date.now(),
+  ): BackgroundJobRecord | undefined {
+    const existing = this.jobs.get(taskID);
+    if (!existing) return undefined;
+
+    // OpenCode process-local task status can briefly disagree with the live
+    // session event stream. Trust live session.status=busy over stale terminal
+    // board state, except for explicit user cancellations where the next step is
+    // stronger cancellation/delete rather than reopening the lane.
+    const isStaleTerminal =
+      TERMINAL_STATES.has(existing.state) || existing.state === 'reconciled';
+    if (!isStaleTerminal || existing.cancellationRequested) {
+      const updated: BackgroundJobRecord = {
+        ...existing,
+        lastLiveBusyAt: now,
+      };
+      this.jobs.set(taskID, updated);
+      return updated;
+    }
+
+    const updated: BackgroundJobRecord = {
+      ...existing,
+      state: 'running',
+      timedOut: false,
+      statusUncertain: false,
+      cancellationRequested: false,
+      terminalUnreconciled: false,
+      updatedAt: now,
+      lastLiveBusyAt: now,
+      completedAt: undefined,
+      terminalState: undefined,
+      resultSummary: undefined,
+      lastStatusError: undefined,
+    };
+
+    this.jobs.set(taskID, updated);
+    return updated;
   }
 
   markReconciled(
@@ -156,7 +247,43 @@ export class BackgroundJobBoard {
       ...existing,
       state: 'reconciled',
       terminalUnreconciled: false,
+      statusUncertain: false,
       updatedAt: now,
+      lastUsedAt: now,
+      terminalState: existing.terminalState ?? terminalStateOf(existing.state),
+    };
+
+    this.jobs.set(taskID, updated);
+    this.trimReusable(taskID);
+    return updated;
+  }
+
+  markCancelled(
+    taskID: string,
+    reason?: string,
+    now = Date.now(),
+    options: { force?: boolean } = {},
+  ): BackgroundJobRecord | undefined {
+    const existing = this.jobs.get(taskID);
+    if (!existing) return undefined;
+    if (!options.force) {
+      if (existing.state === 'reconciled') return existing;
+      if (TERMINAL_STATES.has(existing.state)) return existing;
+    }
+
+    const summary = normalizeCancelReason(reason);
+    const updated: BackgroundJobRecord = {
+      ...existing,
+      state: 'cancelled',
+      timedOut: false,
+      statusUncertain: false,
+      cancellationRequested: true,
+      terminalUnreconciled: true,
+      updatedAt: now,
+      completedAt: existing.completedAt ?? now,
+      terminalState: 'cancelled',
+      resultSummary: summary,
+      lastStatusError: undefined,
     };
 
     this.jobs.set(taskID, updated);
@@ -165,6 +292,65 @@ export class BackgroundJobBoard {
 
   get(taskID: string): BackgroundJobRecord | undefined {
     return this.jobs.get(taskID);
+  }
+
+  resolve(
+    parentSessionID: string,
+    taskIDOrAlias: string,
+  ): BackgroundJobRecord | undefined {
+    const value = taskIDOrAlias.trim();
+    return this.list(parentSessionID).find(
+      (job) => job.taskID === value || job.alias === value,
+    );
+  }
+
+  resolveForStatus(
+    parentSessionID: string,
+    taskIDOrAlias: string,
+  ): BackgroundJobRecord | undefined {
+    return this.resolve(parentSessionID, taskIDOrAlias);
+  }
+
+  resolveReusable(
+    parentSessionID: string,
+    taskIDOrAlias: string,
+    agent?: string,
+  ): BackgroundJobRecord | undefined {
+    const job = this.resolve(parentSessionID, taskIDOrAlias);
+    if (!job || !isReusable(job)) return undefined;
+    if (agent && job.agent !== agent) return undefined;
+    return job;
+  }
+
+  markUsed(parentSessionID: string, key: string, now = Date.now()): void {
+    const job = this.resolve(parentSessionID, key);
+    if (!job) return;
+    this.jobs.set(job.taskID, { ...job, lastUsedAt: now, updatedAt: now });
+  }
+
+  taskIDs(): Set<string> {
+    return new Set(this.jobs.keys());
+  }
+
+  addContext(taskID: string, files: ContextFile[]): void {
+    if (files.length === 0) return;
+    const job = this.jobs.get(taskID);
+    if (!job) return;
+    const existing = new Map(job.contextFiles.map((file) => [file.path, file]));
+    for (const file of files) {
+      const previous = existing.get(file.path);
+      if (previous) {
+        previous.lineCount = Math.max(previous.lineCount, file.lineCount);
+        previous.lastReadAt = Math.max(previous.lastReadAt, file.lastReadAt);
+      } else {
+        existing.set(file.path, { ...file });
+      }
+    }
+    const contextFiles = [...existing.values()]
+      .filter((file) => file.lineCount >= this.readContextMinLines)
+      .sort((a, b) => b.lastReadAt - a.lastReadAt)
+      .slice(0, this.readContextMaxFiles + 1);
+    this.jobs.set(taskID, { ...job, contextFiles });
   }
 
   list(parentSessionID?: string): BackgroundJobRecord[] {
@@ -188,17 +374,27 @@ export class BackgroundJobBoard {
     parentSessionID: string,
     now = Date.now(),
   ): string | undefined {
-    const jobs = this.list(parentSessionID).filter(
+    const active = this.list(parentSessionID).filter(
       (job) => job.state === 'running' || job.terminalUnreconciled,
     );
+    const reusable = this.list(parentSessionID).filter(isReusable);
 
-    if (jobs.length === 0) return undefined;
+    if (active.length === 0 && reusable.length === 0) return undefined;
 
     return [
       '### Background Job Board',
-      'Use task_status before consuming running jobs. Reconcile terminal jobs before final response.',
+      'SENTINEL: background-job-board-v2',
+      'Use task_status for running jobs. Reconcile terminal jobs before final response. Reuse only completed sessions for the same specialist/context; never reuse cancelled or errored sessions.',
       '',
-      ...jobs.map((job) => formatJob(job, now)),
+      '#### Active / Unreconciled',
+      ...(active.length > 0
+        ? active.map((job) => formatJob(job, now))
+        : ['- none']),
+      '',
+      '#### Reusable Sessions',
+      ...(reusable.length > 0
+        ? reusable.map((job) => this.formatReusableJob(job))
+        : ['- none']),
     ].join('\n');
   }
 
@@ -212,6 +408,36 @@ export class BackgroundJobBoard {
     this.jobs.delete(taskID);
   }
 
+  private trimReusable(taskID: string): void {
+    const job = this.jobs.get(taskID);
+    if (!job || !isReusable(job)) return;
+    const reusable = this.list(job.parentSessionID)
+      .filter(
+        (candidate) => candidate.agent === job.agent && isReusable(candidate),
+      )
+      .sort((a, b) => b.lastUsedAt - a.lastUsedAt);
+    for (const stale of reusable.slice(this.maxReusablePerAgent)) {
+      this.jobs.delete(stale.taskID);
+    }
+  }
+
+  private formatReusableJob(job: BackgroundJobRecord): string {
+    const terminal = job.terminalState ?? terminalStateOf(job.state);
+    const reconciliation = job.terminalUnreconciled
+      ? 'unreconciled'
+      : 'reconciled';
+    const lines = [
+      `- ${job.alias} / ${job.taskID} / ${job.agent} / ${terminal ?? job.state}, ${reconciliation}`,
+      `  Objective: ${job.objective || job.description}`,
+    ];
+    const context = formatContextFiles(
+      job.contextFiles,
+      this.readContextMaxFiles,
+    );
+    if (context) lines.push(`  Context read by ${job.alias}: ${context}`);
+    return lines.join('\n');
+  }
+
   private nextAlias(parentSessionID: string, agent: string): string {
     const prefix = AGENT_PREFIX[agent] ?? (agent.slice(0, 3) || 'job');
     const key = `${parentSessionID}:${prefix}`;
@@ -220,6 +446,49 @@ export class BackgroundJobBoard {
 
     return `${prefix}-${next}`;
   }
+}
+
+export function deriveTaskSessionLabel(input: {
+  description?: string;
+  prompt?: string;
+  agentType: string;
+}): string {
+  const preferred = normalizeWhitespace(input.description ?? '');
+  if (preferred) return preferred.slice(0, 48);
+  const firstPromptLine = (input.prompt ?? '')
+    .split(/\r?\n/)
+    .map((line) => normalizeWhitespace(line))
+    .find(Boolean);
+  return firstPromptLine
+    ? firstPromptLine.slice(0, 48)
+    : `recent ${input.agentType} task`;
+}
+
+function isReusable(job: BackgroundJobRecord): boolean {
+  const terminal = job.terminalState ?? terminalStateOf(job.state);
+  return terminal === 'completed' && !job.terminalUnreconciled;
+}
+
+function terminalStateOf(
+  state: BackgroundJobState,
+): TaskOutputState | undefined {
+  return state === 'completed' || state === 'error' || state === 'cancelled'
+    ? state
+    : undefined;
+}
+
+function formatContextFiles(files: ContextFile[], maxFiles: number): string {
+  if (maxFiles === 0) return '';
+  const shown = files.slice(0, maxFiles);
+  const rest = files.length - shown.length;
+  const rendered = shown.map(
+    (file) => `${file.path} (${file.lineCount} lines)`,
+  );
+  return `${rendered.join(', ')}${rest > 0 ? ` (+${rest} more)` : ''}`;
+}
+
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
 }
 
 function formatJob(job: BackgroundJobRecord, now = Date.now()): string {
@@ -231,9 +500,11 @@ function formatJob(job: BackgroundJobRecord, now = Date.now()): string {
       : '';
   const status = job.terminalUnreconciled
     ? `${job.state}, unreconciled`
-    : job.timedOut
-      ? `${job.state}, timed out`
-      : `${job.state}${ageLabel}`;
+    : job.statusUncertain
+      ? `${job.state}, status uncertain`
+      : job.timedOut
+        ? `${job.state}, timed out`
+        : `${job.state}${ageLabel}`;
   const lines = [
     `- ${job.alias} / ${job.taskID} / ${job.agent} / ${status}`,
     `  Objective: ${job.objective || job.description}`,
@@ -241,6 +512,8 @@ function formatJob(job: BackgroundJobRecord, now = Date.now()): string {
 
   if (job.resultSummary && job.terminalUnreconciled) {
     lines.push(`  Result: ${singleLine(job.resultSummary)}`);
+  } else if (job.lastStatusError && job.statusUncertain) {
+    lines.push(`  Status: ${singleLine(job.lastStatusError)}`);
   }
 
   return lines.join('\n');
@@ -250,4 +523,9 @@ function singleLine(value: string): string {
   const normalized = value.replace(/\s+/g, ' ').trim();
   if (normalized.length <= 160) return normalized;
   return `${normalized.slice(0, 157)}...`;
+}
+
+function normalizeCancelReason(reason?: string): string {
+  const normalized = reason?.replace(/\s+/g, ' ').trim();
+  return normalized ? `cancelled: ${normalized}` : 'cancelled';
 }
