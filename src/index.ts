@@ -29,7 +29,6 @@ import {
   createPhaseReminderHook,
   createPostFileToolNudgeHook,
   createTaskSessionManagerHook,
-  createTodoContinuationHook,
   ForegroundFallbackManager,
 } from './hooks';
 import { processImageAttachments } from './hooks/image-hook';
@@ -138,7 +137,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
   let applyPatchHook: ReturnType<typeof createApplyPatchHook>;
   let jsonErrorRecoveryHook: ReturnType<typeof createJsonErrorRecoveryHook>;
   let foregroundFallback: ForegroundFallbackManager;
-  let todoContinuationHook: ReturnType<typeof createTodoContinuationHook>;
   let deepworkCommandHook: ReturnType<typeof createDeepworkCommandHook>;
   let goalHook: ReturnType<typeof createGoalHook>;
   let taskSessionManagerHook: ReturnType<typeof createTaskSessionManagerHook>;
@@ -336,17 +334,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         Object.keys(runtimeChains).length > 0,
     );
 
-    backgroundJobBoard = new BackgroundJobBoard();
-
-    // Initialize todo-continuation hook (opt-in auto-continue for
-    // incomplete todos)
-    todoContinuationHook = createTodoContinuationHook(ctx, {
-      maxContinuations: config.todoContinuation?.maxContinuations ?? 5,
-      cooldownMs: config.todoContinuation?.cooldownMs ?? 3000,
-      autoEnable: config.todoContinuation?.autoEnable ?? false,
-      autoEnableThreshold: config.todoContinuation?.autoEnableThreshold ?? 4,
-      backgroundJobBoard,
-    });
     deepworkCommandHook = createDeepworkCommandHook();
     goalHook = createGoalHook(ctx, config, {
       getAgentName: (sessionID) => sessionAgentMap.get(sessionID),
@@ -372,7 +359,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
     toolCount =
       Object.keys(councilTools).length +
       Object.keys(cancelTaskTools).length +
-      Object.keys(todoContinuationHook.tool).length +
       1 + // webfetch
       2; // ast_grep_search, ast_grep_replace
   } catch (err) {
@@ -443,7 +429,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       ...observeTools,
       ...cancelTaskTools,
       webfetch,
-      ...todoContinuationHook.tool,
       ast_grep_search,
       ast_grep_replace,
     },
@@ -773,23 +758,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         agentConfigEntry.permission = agentPermission;
       }
 
-      // Register /auto-continue command so OpenCode recognizes it.
-      // Actual handling is done by command.execute.before hook below
-      // (no LLM round-trip — injected directly into output.parts).
-      const configCommand = opencodeConfig.command as
-        | Record<string, unknown>
-        | undefined;
-      if (!configCommand?.['auto-continue']) {
-        if (!opencodeConfig.command) {
-          opencodeConfig.command = {};
-        }
-        (opencodeConfig.command as Record<string, unknown>)['auto-continue'] = {
-          template: 'Call the auto_continue tool with enabled=true',
-          description:
-            'Enable auto-continuation — orchestrator keeps working through incomplete todos',
-        };
-      }
-
       interviewManager.registerCommand(opencodeConfig);
       goalHook.registerCommand(opencodeConfig);
       deepworkCommandHook.registerCommand(opencodeConfig);
@@ -850,15 +818,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
 
       // Runtime model fallback for foreground agents (rate-limit detection)
       await foregroundFallback.handleEvent(input.event);
-
-      // Todo-continuation: auto-continue orchestrator on incomplete todos
-      await todoContinuationHook.handleEvent(input);
-
-      goalHook.handleEvent(
-        input as {
-          event: { type: string; properties?: Record<string, unknown> };
-        },
-      );
 
       // Handle auto-update checking
       await autoUpdateChecker.event(input);
@@ -978,18 +937,7 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       }
     },
 
-    // Direct interception of /auto-continue command — bypasses LLM
-    // round-trip
     'command.execute.before': async (input, output) => {
-      await todoContinuationHook.handleCommandExecuteBefore(
-        input as {
-          command: string;
-          sessionID: string;
-          arguments: string;
-        },
-        output as { parts: Array<{ type: string; text?: string }> },
-      );
-
       await interviewManager.handleCommandExecuteBefore(
         input as {
           command: string;
@@ -1051,10 +999,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
       if (agent) {
         sessionAgentMap.set(input.sessionID, agent);
       }
-      todoContinuationHook.handleChatMessage({
-        sessionID: input.sessionID,
-        agent,
-      });
     },
 
     // Inject orchestrator system prompt for serve-mode sessions. In serve
@@ -1152,9 +1096,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
         log,
       });
 
-      await todoContinuationHook.handleMessagesTransform({
-        messages: typedOutput.messages,
-      });
       await taskSessionManagerHook['experimental.chat.messages.transform'](
         input,
         typedOutput,
@@ -1213,16 +1154,6 @@ const OhMyOpenCodeLite: Plugin = async (ctx) => {
             output: unknown;
             metadata: unknown;
           },
-        ),
-      );
-
-      await runPostToolHook('todo-continuation', () =>
-        todoContinuationHook.handleToolExecuteAfter(
-          input as {
-            tool: string;
-            sessionID?: string;
-          },
-          output as { output?: unknown },
         ),
       );
 

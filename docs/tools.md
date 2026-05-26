@@ -57,27 +57,3 @@ OpenCode automatically formats files after they are written or edited, using lan
 Includes Prettier, Biome, `gofmt`, `rustfmt`, `ruff`, and 20+ others.
 
 > See the [official OpenCode docs](https://opencode.ai/docs/formatters/#built-in) for the complete list.
-
----
-
-## Todo Continuation
-
-Auto-continue has its own guide now:
-
-- [Todo Continuation](todo-continuation.md) — controls, safety gates, behavior, and config
-
----
-
-## Goal
-
-Pin a goal that keeps planning, todos, delegation, and
-verification aligned.
-
-| Command | Description |
-|---------|-------------|
-| `/goal <objective>` | Set the current goal |
-| `/goal` | Show the active goal |
-| `/goal clear` | Clear the active goal |
-| `/goal from <interview>` | Promote an interview markdown spec into the active goal |
-
-See [Goal](goal.md) for the full workflow.
