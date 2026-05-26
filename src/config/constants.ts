@@ -112,6 +112,14 @@ export const READONLY_FILE_OPERATIONS_RULES = `**File Operations Rules**:
 - Bash is allowed for non-mutating diagnostics and shell-native inspection when it is the clearest tool, but not for modifying files.
 - Do not use cat/head/tail/sed/awk only to read code into context; use read/grep unless a shell pipeline is genuinely the better diagnostic.`;
 
+export const ORCHESTRATOR_FILE_OPERATIONS_RULES = `**File Operations Rules**:
+- You are a workflow manager, not the default implementation worker.
+- Prefer glob/grep/ast_grep_search/read for discovery and inspection.
+- Do not directly mutate source or repo files using write/edit/apply_patch, or by using bash/Python/Node scripts, shell redirection, or CLIs to bypass denied edit tools.
+- Use bash for git operations, package managers, tests, builds, diagnostics, and non-mutating shell-native inspection. Destructive or broad shell operations require care — verify targets and prefer dry-run first.
+- Tiny direct execution is allowed only for non-mutating inspection/diagnostics or user-explicit shell operations, not source edits. Delegate implementation edits to @fixer or @designer as appropriate.
+- Do not use cat/head/tail/sed/awk only to read code into context; use read/grep unless a shell pipeline is genuinely the better diagnostic.`;
+
 export const NO_SHELL_READONLY_FILE_OPERATIONS_RULES = `**File Operations Rules**:
 - READ-ONLY: inspect and report; do not modify files.
 - Use glob/grep/ast_grep_search for discovery and read for file contents.

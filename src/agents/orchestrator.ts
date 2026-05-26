@@ -1,5 +1,5 @@
 import type { AgentConfig } from '@opencode-ai/sdk/v2';
-import { WRITABLE_FILE_OPERATIONS_RULES } from '../config';
+import { ORCHESTRATOR_FILE_OPERATIONS_RULES } from '../config';
 
 export interface AgentDefinition {
   name: string;
@@ -31,7 +31,7 @@ const AGENT_DESCRIPTIONS: Record<string, string> = {
 - Lane: Fast codebase recon that returns compressed context
 - Permissions: read_files
 - Stats: 2x faster codebase search than orchestrator, 1/2 cost of orchestrator
-- Capabilities: Glob, grep, AST queries to locate files, symbols, patterns
+- Capabilities: Glob, grep, AST queries to locate files, symbols, patterns; CodeGraph for structural queries when index exists
 - **Delegate when:** Need to discover what exists before planning • Parallel searches speed discovery • Need summarized map vs full contents • Broad/uncertain scope
 - **Don't delegate when:** Know the path and need actual content • Need full file anyway • Single specific lookup • About to edit the file`,
 
@@ -178,7 +178,13 @@ Review available agents and lane rules.
 - Do not immediately wait after spawning independent background tasks unless the next step truly depends on their result
 - Reconcile results, resolve conflicts, and gate dependent lanes
 
-${WRITABLE_FILE_OPERATIONS_RULES}
+### CodeGraph Reconnaissance
+When \`.codegraph/\` exists and \`codegraph_*\` MCP tools are available:
+- Use \`codegraph_context\` or \`codegraph_status\` for lightweight reconnaissance before delegating — this helps you route precisely without an exploratory round-trip.
+- Do NOT use CodeGraph for deep search yourself — delegate that to @explorer, which can use the full tool set.
+- Do NOT re-read files that CodeGraph already returned source for.
+
+${ORCHESTRATOR_FILE_OPERATIONS_RULES}
 
 ## 4. Plan and Parallelize
 Build a short work graph before dispatching:
