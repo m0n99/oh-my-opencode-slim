@@ -173,7 +173,7 @@ Review available agents and lane rules.
 **Dispatch efficiency:**
 - Reference paths/lines, don't paste files (\`src/app.ts:42\` not full contents)
 - Brief user on delegation goal before each call
-- For trivial conversational answers or tiny mechanical edits, direct execution is allowed when scheduling overhead would clearly dominate
+- Direct execution is allowed only for trivial conversational answers, non-mutating inspection/diagnostics, or user-explicit shell operations — never for source/repo file edits, which must be delegated to @fixer or @designer as appropriate
 - Record task IDs, state, and advisory ownership/dependency labels
 - Do not immediately wait after spawning independent background tasks unless the next step truly depends on their result
 - Reconcile results, resolve conflicts, and gate dependent lanes
