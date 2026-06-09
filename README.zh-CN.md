@@ -12,7 +12,7 @@
   </p>
 
   <p>
-    <a href="README.md">English</a> | <b>简体中文</b> | <a href="README.ja-JP.md">日本語</a>
+    <a href="README.md">English</a> | <b>简体中文</b> | <a href="README.ja-JP.md">日本語</a> | <a href="README.ko-KR.md">한국어</a>
   </p>
 </div>
 
@@ -48,7 +48,7 @@ bunx oh-my-opencode-slim@latest install
 它规划工作、将专家作为后台任务分发、按需检查状态，并在继续执行之前核对结果。这需要 OpenCode 原生的后台子智能体支持，因此请使用下方环境变量启动 OpenCode。
 
 ```bash
-bunx oh-my-opencode-slim@latest install --background-subagents=yes
+bunx oh-my-opencode-slim@beta install --background-subagents=yes
 ```
 
 安装后请重启终端或 source 更新过的 shell 文件，然后再运行 `opencode`；也可以一次性使用 `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true opencode` 启动。

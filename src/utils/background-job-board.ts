@@ -196,13 +196,9 @@ export class BackgroundJobBoard {
     const existing = this.jobs.get(taskID);
     if (!existing) return undefined;
 
-    // OpenCode process-local task status can briefly disagree with the live
-    // session event stream. Trust live session.status=busy over stale terminal
-    // board state, except for explicit user cancellations where the next step is
-    // stronger cancellation/delete rather than reopening the lane.
     const isStaleTerminal =
       TERMINAL_STATES.has(existing.state) || existing.state === 'reconciled';
-    if (!isStaleTerminal || existing.cancellationRequested) {
+    if (isStaleTerminal) {
       const updated: BackgroundJobRecord = {
         ...existing,
         lastLiveBusyAt: now,
@@ -213,17 +209,8 @@ export class BackgroundJobBoard {
 
     const updated: BackgroundJobRecord = {
       ...existing,
-      state: 'running',
-      timedOut: false,
-      statusUncertain: false,
-      cancellationRequested: false,
-      terminalUnreconciled: false,
       updatedAt: now,
       lastLiveBusyAt: now,
-      completedAt: undefined,
-      terminalState: undefined,
-      resultSummary: undefined,
-      lastStatusError: undefined,
     };
 
     this.jobs.set(taskID, updated);
@@ -304,13 +291,6 @@ export class BackgroundJobBoard {
     );
   }
 
-  resolveForStatus(
-    parentSessionID: string,
-    taskIDOrAlias: string,
-  ): BackgroundJobRecord | undefined {
-    return this.resolve(parentSessionID, taskIDOrAlias);
-  }
-
   resolveReusable(
     parentSessionID: string,
     taskIDOrAlias: string,
@@ -384,7 +364,7 @@ export class BackgroundJobBoard {
     return [
       '### Background Job Board',
       'SENTINEL: background-job-board-v2',
-      'Use task_status for running jobs. Reconcile terminal jobs before final response. Reuse only completed sessions for the same specialist/context; never reuse cancelled or errored sessions.',
+      'Do not poll running jobs. Wait for hook-driven completion, or use cancel_task only for explicit cancellation. Reconcile terminal jobs before final response. Reuse only completed sessions for the same specialist/context; never reuse cancelled or errored sessions.',
       '',
       '#### Active / Unreconciled',
       ...(active.length > 0

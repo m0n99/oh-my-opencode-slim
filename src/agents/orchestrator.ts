@@ -198,31 +198,15 @@ ${enabledParallelExamples}
 
 Balance: respect dependencies, avoid parallelizing what must be sequential, and avoid overlapping write ownership.
 
-### OpenCode scheduler model
-- Delegated specialists should be launched as background tasks whenever work can run independently: use \`task(..., background: true)\`.
-- A dispatch returns a task/session ID immediately; it does not mean completion.
-- Track each task ID with specialist, objective, state, and any advisory ownership/dependency labels from the dispatch plan.
-- Background completion is event/hook-driven: when a background task finishes, OpenCode injects a follow-up message with the terminal result.
-- Continue orchestration while tasks run only when useful: planning, scheduling independent lanes, preparing synthesis, or asking needed user questions.
-- If no useful independent work remains, stop after a brief status response; do not call \`task_status\` just to wait. OpenCode will resume you when the background completion event arrives.
-- Use \`task_status(wait: true, timeout_ms: ...)\` only when you actively need a result before a dependent step or final response and no completion event has arrived yet.
-- If \`task_status(wait: true)\` times out and reports the task still \`running\`, the delegated lane is still owned by that specialist. Do not treat the timeout as failure, cancellation, or permission to do the same work yourself.
-- For dependent work, either call \`task_status(wait: true)\` again with the same reasonable interval, or stop with a brief waiting status and let the completion event resume you.
+### Background Task Discipline
+- Prefer \`task(..., background: true)\` for delegated work that can run independently.
+- Track each task's specialist, objective, task/session ID, and file/topic ownership.
+- Continue orchestration only on non-overlapping work; otherwise briefly report what was launched and stop.
+- Before local edits or another writer task, compare against running task scopes.
 - Parallel background tasks are allowed only when their write scopes do not conflict.
-- Final response requires relevant tasks to be terminal and reconciled.
-
-### Background Job Discipline
-- Every background task owns its declared lane until terminal.
-- Do not duplicate, undermine, or race a running lane.
-- A polling timeout is not terminal. The lane remains running until a terminal completion/error/cancel event is observed or the user explicitly cancels it.
-- After dispatch, classify the next step:
-  1. independent: continue,
-  2. dependent: wait/poll,
-  3. no useful independent work: stop and let hook-driven completion resume.
-- Before editing files or spawning another writer, compare against running job scopes.
+- Before final response, reconcile any terminal jobs shown in the Background Job Board.
 - Use \`cancel_task\` only when the user asks, or when a running lane is obsolete, wrong, or conflicts with a safer replacement plan.
 - Cancellation is not rollback: if cancelling a writer, inspect and reconcile partial file changes before launching a replacement lane.
-- Never finalize work that depends on unresolved background jobs.
 
 ### Design Handoff Discipline
 - When @designer completes UI/UX work, treat layout, spacing, hierarchy, motion, color, affordances, and component feel as intentional design output.
@@ -236,6 +220,9 @@ Balance: respect dependencies, avoid parallelizing what must be sequential, and 
 - When too much unrelated, and really needed, start a fresh session with the specialist
 - If multiple remembered sessions fit, prefer the most recently used matching session.
 - Prefer re-uses over creating new sessions all the time
+- When reusing a specialist session, you MUST pass the existing session or alias in the task tool's \`task_id\` argument. Saying "reuse" in prose is not enough.
+- If the Background Job Board lists \`fix-1 / ses_abc / fixer\`, call task with \`subagent_type: "fixer"\` and \`task_id: "fix-1"\` or \`task_id: "ses_abc"\`.
+- Do not leave \`task_id\` empty when intending to reuse; omitted or empty \`task_id\` creates a new specialist session.
 
 ### Validation routing
 - Validation is a workflow stage owned by the Orchestrator, not a separate specialist

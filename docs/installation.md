@@ -178,11 +178,13 @@ bunx oh-my-opencode-slim@latest install --reset
 ```
 
 The installer automatically:
-- Adds the plugin to `~/.config/opencode/opencode.json`
+- Adds the plugin to `opencode.json` or `opencode.jsonc` in
+  `$OPENCODE_CONFIG_DIR` when set, otherwise `~/.config/opencode`
 - Disables default OpenCode agents
 - Enables OpenCode LSP integration when no explicit `lsp` setting exists
 - Configures `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true` when approved
-- Generates agent model mappings in `~/.config/opencode/oh-my-opencode-slim.json` (or `.jsonc`)
+- Generates agent model mappings in the same OpenCode config directory as
+  `oh-my-opencode-slim.json` (or `.jsonc`)
 
 ### Step 3: Authenticate with Providers
 
@@ -251,9 +253,9 @@ If the installer reports that the configuration already exists, you have two opt
 
 3. Check that your provider is configured in `~/.config/opencode/opencode.json`
 
-### Missing `task_status` or Background Task Tools
+### Missing Background Task Tools
 
-If the orchestrator says `task_status` is unavailable, background tasks never
+If background tasks never
 return task IDs, or delegation behaves like a blocking foreground call:
 
 1. Confirm OpenCode was launched with the environment variable:
@@ -263,8 +265,7 @@ return task IDs, or delegation behaves like a blocking foreground call:
    It should show `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=true`.
 
    Also use an OpenCode release that includes native background
-   subagents/task_status; run `opencode --version` and update OpenCode if
-   `task_status` is missing.
+   subagents; run `opencode --version` and update OpenCode if background tasks are missing.
 
 2. Restart your terminal or source the shell file the installer updated, then
    start OpenCode again. Plain `opencode` is only sufficient after that
